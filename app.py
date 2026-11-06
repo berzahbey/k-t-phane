@@ -2,6 +2,10 @@ import os
 import re
 from flask import Flask, render_template_string, send_from_directory
 from pypdf import PdfReader
+import warnings
+
+# PDF uyarılarını gizleyelim ki loglar şişmesin
+warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
 BOOK_DIR = "/books"
@@ -54,7 +58,7 @@ def check_pdf_ocr(file_path):
     try:
         reader = PdfReader(file_path)
         total_text = ""
-        for i in range(min(2, len(reader.pages))):
+        for i in range(min(1, len(reader.pages))):
             txt = reader.pages[i].extract_text()
             if txt:
                 total_text += txt
@@ -235,3 +239,4 @@ def download_book(filename):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
