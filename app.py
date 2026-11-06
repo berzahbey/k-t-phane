@@ -10,6 +10,9 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 BOOK_DIR = "/books"
 
+# Bellek önbelleği (Cache) - Sayfaların anında açılmasını sağlar
+CACHED_CATEGORIES = None
+
 CATEGORIES = {
     "Din": {
         "İslam": ["islam", "kur'an", "hadis", "tefsir", "fikiht", "risale", "imam", "hz", "sunnet", "kuran", "peygamber", "tasavvuf", "ilahiyat", "mezhep", "itikat", "mevlana", "mesnevi", "muhyiddin"],
@@ -90,6 +93,10 @@ def classify_book(filename):
     return "Genel Diğer", "Genel"
 
 def get_categorized_books():
+    global CACHED_CATEGORIES
+    if CACHED_CATEGORIES is not None:
+        return CACHED_CATEGORIES
+
     structured_data = {}
     try:
         if os.path.exists(BOOK_DIR):
@@ -140,6 +147,7 @@ def get_categorized_books():
     except Exception as e:
         print(f"Tarama Hatası: {e}")
         
+    CACHED_CATEGORIES = structured_data
     return structured_data
 
 HTML_TEMPLATE = """
@@ -239,4 +247,3 @@ def download_book(filename):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
