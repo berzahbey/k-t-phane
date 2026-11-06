@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  k-tphane:
+    image: ghcr.io/berzahbey/k-tphane:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: k-tphane
+    ports:
+      - "5090:5000"
+    volumes:
+      - /media/ZimaOS-HD/Kitap:/books
+    restart: unless-stopped
