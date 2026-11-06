@@ -1,6 +1,7 @@
 import os
 import re
 from flask import Flask, render_template_string, send_from_directory
+from pypdf import PdfReader
 
 app = Flask(__name__)
 BOOK_DIR = "/books"
@@ -49,6 +50,21 @@ def detect_language(filename):
     else:
         return "Türkçe"
 
+def check_pdf_ocr(file_path):
+    try:
+        reader = PdfReader(file_path)
+        total_text = ""
+        for i in range(min(2, len(reader.pages))):
+            txt = reader.pages[i].extract_text()
+            if txt:
+                total_text += txt
+        if len(total_text.strip()) < 30:
+            return "PDF (OCR Gerekli)"
+        else:
+            return "PDF (Metin Tabanlı)"
+    except Exception:
+        return "PDF"
+
 def parse_name_and_author(filename):
     clean_fn = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' - ')
     parts = clean_fn.split(' - ')
@@ -83,6 +99,11 @@ def get_categorized_books():
                         lang = detect_language(file)
                         main_cat, sub_cat = classify_book(file)
                         
+                        if ext == 'pdf':
+                            ext_label = check_pdf_ocr(full_path)
+                        else:
+                            ext_label = "EPUB"
+                        
                         group_key = re.sub(r'[^a-z0-9]', '', title.lower())
                         if not group_key:
                             group_key = file.lower()
@@ -98,7 +119,8 @@ def get_categorized_books():
                             }
                         book_groups[group_key]["formats"].append({
                             "filename": file,
-                            "ext": ext.upper(),
+                            "ext_label": ext_label,
+                            "ext_short": ext.upper(),
                             "lang": lang,
                             "path": rel_path
                         })
@@ -138,7 +160,8 @@ HTML_TEMPLATE = """
         .book-meta { color: #94a3b8; font-size: 12px; }
         .badges { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
         .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; color: white; text-transform: uppercase; }
-        .badge-pdf { background: #ef4444; }
+        .badge-pdf-metin { background: #059669; }
+        .badge-pdf-ocr { background: #d97706; }
         .badge-epub { background: #8b5cf6; }
         .badge-lang { background: #0d9488; }
         .btn-group { display: flex; gap: 6px; flex-shrink: 0; }
@@ -152,7 +175,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>📚 K-Tphane Akıllı Arşiv</h1>
-        <p>Kitaplarınız ana kategoriler ve alt dallar şeklinde düzenlenmiştir.</p>
+        <p>Kitaplarınız OCR durumu, yazar, format ve dil analizleriyle listelenmiştir.</p>
 
         {% if categories %}
             {% for main_cat, sub_cats in categories.items() %}
@@ -170,15 +193,15 @@ HTML_TEMPLATE = """
                                                 <span class="book-meta">Yazar: <strong>{{ book.author }}</strong></span>
                                                 <div class="badges">
                                                     {% for fmt in book.formats %}
-                                                        <span class="badge badge-{{ fmt.ext.lower() }}">{{ fmt.ext }}</span>
+                                                        <span class="badge {% if 'OCR' in fmt.ext_label %}badge-pdf-ocr{% elif 'Metin' in fmt.ext_label %}badge-pdf-metin{% else %}badge-epub{% endif %}">{{ fmt.ext_label }}</span>
                                                         <span class="badge badge-lang">{{ fmt.lang }}</span>
                                                     {% endfor %}
                                                 </div>
                                             </div>
                                             <div class="btn-group">
                                                 {% for fmt in book.formats %}
-                                                    <a href="/read/{{ fmt.path }}" target="_blank" class="btn btn-read">Oku ({{ fmt.ext }})</a>
-                                                    <a href="/download/{{ fmt.path }}" class="btn btn-download">İndir ({{ fmt.ext }})</a>
+                                                    <a href="/read/{{ fmt.path }}" target="_blank" class="btn btn-read">Oku ({{ fmt.ext_short }})</a>
+                                                    <a href="/download/{{ fmt.path }}" class="btn btn-download">İndir ({{ fmt.ext_short }})</a>
                                                 {% endfor %}
                                             </div>
                                         </div>
