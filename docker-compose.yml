@@ -1,11 +1,21 @@
-version: '3.8'
+version: "3.8"
 
 services:
   k-tphane:
     build: .
     container_name: k-tphane
+    network_mode: bridge
     ports:
       - "5090:5000"
-    volumes:
-      - /DATA/Public/Books:/books
     restart: unless-stopped
+    volumes:
+      - /media/ZimaOS-HD/Kitap:/books
+
+x-casaos:
+  hostname: ""
+  index: "/"
+  main: "k-tphane"
+  port_map: "5090"
+  scheme: "http"
+  title:
+    custom: "Kitaplar"
