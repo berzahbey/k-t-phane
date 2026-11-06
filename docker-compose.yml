@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  k-tphane:
+    build: .
+    container_name: k-tphane
+    ports:
+      - "5090:5000"
+    volumes:
+      - /DATA/Public/Books:/books
+    restart: unless-stopped
