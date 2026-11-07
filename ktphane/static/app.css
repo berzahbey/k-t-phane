@@ -256,3 +256,25 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .cf-list { margin: 10px 0 0; padding: 10px 12px 10px 28px; background: var(--surface-2); border-radius: 8px; max-height: 180px; overflow: auto; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
 .cf-list span { color: var(--muted); }
 .confirm .org-body { padding: 22px 24px; }
+
+/* ---------- toplu seçim ---------- */
+.head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#btnSelect.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.chk { display: none; position: absolute; z-index: 3; width: 24px; height: 24px; border-radius: 7px; background: rgba(255,255,255,.92); border: 2px solid rgba(0,0,0,.25); place-items: center; }
+.chk svg { width: 15px; height: 15px; opacity: 0; color: #fff; stroke-width: 3; }
+.books.selecting .chk { display: grid; }
+.books.selecting .card { position: relative; }
+.books.selecting .card .chk { top: 8px; left: 8px; }
+.books.selecting .row { position: relative; }
+.books.selecting .row .chk { position: static; }
+.books.selecting .row { grid-template-columns: 24px 40px minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.1fr) auto; }
+.books.selecting .sel .chk { background: var(--accent); border-color: var(--accent); }
+.books.selecting .sel .chk svg { opacity: 1; }
+.books.selecting .card.sel .cover { outline: 3px solid var(--accent); outline-offset: 2px; }
+.books.selecting .row.sel { background: var(--accent-soft); }
+.selbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px; width: min(760px, calc(100vw - 24px)); padding: 10px 12px 10px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 10px 40px rgba(0,0,0,.25); font-size: 13px; flex-wrap: wrap; }
+.selbar .grow { flex: 1; }
+.selbar .btn[disabled] { opacity: .45; cursor: not-allowed; }
+@media (max-width: 900px) { .books.selecting .row { grid-template-columns: 24px 36px minmax(0, 1fr) auto; } }
+.selbar:not([hidden]) ~ .toast { bottom: 92px; }
+.main:has(.books.selecting) { padding-bottom: 120px; }

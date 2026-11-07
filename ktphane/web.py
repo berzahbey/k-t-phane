@@ -159,7 +159,7 @@ def create_app():
         d = request.get_json(silent=True) or {}
         if d.get("confirm") != CONFIRM_TOKEN:
             return jsonify(error="Silme onayı eksik"), 400
-        ids = [i for i in (d.get("ids") or []) if isinstance(i, str)][:500]
+        ids = [i for i in (d.get("ids") or []) if isinstance(i, str)][:1000]
         if not ids:
             return jsonify(error="Silinecek dosya seçilmedi"), 400
         done, errors = lib.trash.delete(ids, title=d.get("title") or "")

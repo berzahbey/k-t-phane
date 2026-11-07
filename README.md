@@ -33,6 +33,8 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
 - **Silme**: Kitap detayında her formatın yanında *Sil*; birden fazla format veya koleksiyon için “tümüyle sil”.
   İki aşamalı onay ister ve dosyayı sunucudan **kalıcı** olarak siler (çöp kutusu yok). Silinenlerin adı/yolu
   `/data/silinenler-kaydi.json` dosyasına not edilir.
+- **Toplu seçim**: “Seç” ile kitaplar/koleksiyonlar işaretlenir; “Görünenlerin tümünü seç” filtre ve aramayla
+  birlikte çalışır; “Seçilenleri sil” aynı iki aşamalı onayla toplu siler.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)

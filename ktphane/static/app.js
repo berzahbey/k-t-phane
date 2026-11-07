@@ -131,7 +131,7 @@
     state.filtered = collapse(sortBooks(baseFilter()));
     state.shown = 0;
     const box = $("#books");
-    box.className = "books " + state.view;
+    box.className = "books " + state.view + (state.selecting ? " selecting" : "");
     box.innerHTML = "";
     document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
     $("#sort").value = state.sort;
@@ -211,17 +211,18 @@
     return out;
   }
   const volLabel = (c) => `${c.volumes.length} cilt`;
+  const selCls = (id) => (state.sel && state.sel.has(id) ? " sel" : "");
   const cardHtml = (b) => {
     if (b.isCollection) {
-      return `<button class="card collection" data-id="${b.id}"><div class="stack">${coverHtml(b, true)}</div><span class="ti">${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")} · ${volLabel(b)}</span></button>`;
+      return `<button class="card collection${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span><div class="stack">${coverHtml(b, true)}</div><span class="ti">${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")} · ${volLabel(b)}</span></button>`;
     }
     const dir = isRtl(b.title) ? ' dir="rtl"' : "";
-    return `<button class="card" data-id="${b.id}">${coverHtml(b, true)}<span class="ti"${dir}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span></button>`;
+    return `<button class="card${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, true)}<span class="ti"${dir}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span></button>`;
   };
-  const rowHtml = (b) => b.isCollection ? `<button class="row" data-id="${b.id}">${coverHtml(b, false)}
+  const rowHtml = (b) => b.isCollection ? `<button class="row${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, false)}
     <div style="min-width:0"><div class="ti">${esc(b.title)} <span class="badge">${volLabel(b)}</span></div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
-    <div class="badges"><span class="badge lang">${esc(b.language)}</span></div></button>` : `<button class="row" data-id="${b.id}">${coverHtml(b, false)}
+    <div class="badges"><span class="badge lang">${esc(b.language)}</span></div></button>` : `<button class="row${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, false)}
     <div style="min-width:0"><div class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
     <div class="badges">${badgesHtml(b)}</div></button>`;
@@ -326,7 +327,11 @@
   $("#q").addEventListener("input", (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.q = e.target.value.trim(); render(); }, 120); });
   $("#sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
   document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; store.set("view", state.view); render(); }));
-  $("#books").addEventListener("click", (e) => { const c = e.target.closest("[data-id]"); if (c) openDetail(c.dataset.id); });
+  $("#books").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-id]"); if (!c) return;
+    if (state.selecting) { toggleSel(c.dataset.id, c); return; }
+    openDetail(c.dataset.id);
+  });
   $("#catNav").addEventListener("click", (e) => {
     const c = e.target.closest(".cat"); if (!c) return;
     const cat = c.dataset.cat || null, sub = c.dataset.sub || null;
@@ -357,6 +362,7 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && document.activeElement !== $("#q") && !$("#detail").open) { e.preventDefault(); $("#q").focus(); }
     if (e.key === "Escape" && document.activeElement === $("#q") && $("#q").value) { $("#q").value = ""; state.q = ""; render(); }
+    else if (e.key === "Escape" && state.selecting && !document.querySelector("dialog[open]")) setSelecting(false);
   });
   new IntersectionObserver((ents) => { if (ents[0].isIntersecting && state.shown < state.filtered.length) more(); }, { rootMargin: "800px" }).observe($("#sentinel"));
 
@@ -437,6 +443,52 @@
   $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
   $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
+  // ---------- toplu seçim ----------
+  state.sel = new Set(); state.selecting = false;
+  function setSelecting(on) {
+    state.selecting = on;
+    if (!on) state.sel.clear();
+    $("#btnSelect").classList.toggle("active", on);
+    $("#books").classList.toggle("selecting", on);
+    if (!on) document.querySelectorAll("#books .sel").forEach((el) => el.classList.remove("sel"));
+    updateSelBar();
+  }
+  function toggleSel(id, el) {
+    state.sel.has(id) ? state.sel.delete(id) : state.sel.add(id);
+    if (el) el.classList.toggle("sel", state.sel.has(id));
+    updateSelBar();
+  }
+  // seçili öğe (kitap veya koleksiyon) -> dosya listesi
+  function selectedFiles() {
+    const files = [];
+    for (const b of state.books) {
+      if (state.sel.has(b.id) || (b.series_id && state.sel.has(b.series_id))) files.push(...b.formats);
+    }
+    return files;
+  }
+  function updateSelBar() {
+    const bar = $("#selBar");
+    bar.hidden = !state.selecting;
+    if (!state.selecting) return;
+    const n = state.sel.size, files = selectedFiles();
+    $("#selCount").textContent = n ? `${n.toLocaleString("tr")} seçildi · ${files.length.toLocaleString("tr")} dosya · ${fmtSize(files.reduce((t, f) => t + f.size, 0))}` : "Kitaplara dokunarak seçin";
+    $("#selDelete").disabled = !n;
+  }
+  $("#btnSelect").addEventListener("click", () => setSelecting(!state.selecting));
+  $("#selCancel").addEventListener("click", () => setSelecting(false));
+  $("#selAll").addEventListener("click", () => {
+    const all = state.filtered.every((x) => state.sel.has(x.id));
+    for (const x of state.filtered) all ? state.sel.delete(x.id) : state.sel.add(x.id);
+    document.querySelectorAll("#books [data-id]").forEach((el) => el.classList.toggle("sel", state.sel.has(el.dataset.id)));
+    $("#selAll").textContent = all ? "Görünenlerin tümünü seç" : "Seçimi kaldır";
+    updateSelBar();
+  });
+  $("#selDelete").addEventListener("click", async () => {
+    const files = selectedFiles(); if (!files.length) return;
+    const ok = await deleteFiles(files.map((f) => f.id), `${state.sel.size} seçili kitap`, `${files.length} dosya`);
+    if (ok) setSelecting(false);
+  });
+
   // ---------- silme (iki aşamalı onay, kalıcı) ----------
   function ask({ step, title, body, ok }) {
     return new Promise((resolve) => {
@@ -457,18 +509,24 @@
     const files = filesFor(ids);
     const list = `<ul class="cf-list">${files.slice(0, 12).map((f) => `<li>${esc(f.path)} <span>· ${fmtSize(f.size)}</span></li>`).join("")}${files.length > 12 ? `<li>… ve ${files.length - 12} dosya daha</li>` : ""}</ul>`;
     const ok1 = await ask({ step: "1 / 2", title: `“${title}” silinsin mi?`, body: `Silinecek: <b>${esc(what)}</b>${list}`, ok: "Sil" });
-    if (!ok1) return;
+    if (!ok1) return false;
     const ok2 = await ask({ step: "2 / 2", title: "Emin misiniz? Bu işlem geri alınamaz.",
       body: `<b>${files.length} dosya</b> sunucudan <b>kalıcı olarak</b> silinecek. Çöp kutusuna gitmez, geri getirilemez.${list}`, ok: "Evet, kalıcı olarak sil" });
-    if (!ok2) return;
+    if (!ok2) return false;
     try {
-      const r = await fetch("/api/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, title, confirm: "KALICI-SIL" }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || r.status);
+      let deleted = 0, errors = 0;
+      for (let i = 0; i < ids.length; i += 400) {  // büyük seçimler parça parça
+        toast(`Siliniyor… ${Math.min(i + 400, ids.length)} / ${ids.length}`);
+        const r = await fetch("/api/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids.slice(i, i + 400), title, confirm: "KALICI-SIL" }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        deleted += d.deleted.length; errors += (d.errors || []).length;
+      }
       $("#detail").open && $("#detail").close();
       await load();
-      toast(d.errors && d.errors.length ? `${d.deleted.length} silindi, ${d.errors.length} silinemedi` : `${d.deleted.length} dosya kalıcı olarak silindi`);
-    } catch (e) { toast("Silinemedi: " + e.message); }
+      toast(errors ? `${deleted} silindi, ${errors} silinemedi` : `${deleted} dosya kalıcı olarak silindi`);
+      return true;
+    } catch (e) { toast("Silinemedi: " + e.message); await load(); return false; }
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-del]"); if (!b) return;

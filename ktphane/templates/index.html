@@ -64,7 +64,8 @@
         <h1 id="resultTitle">Tüm kitaplar</h1>
         <p id="resultCount" class="muted"></p>
       </div>
-      <div id="activeChips" class="chips"></div>
+      <div class="head-right"><div id="activeChips" class="chips"></div>
+        <button class="btn" id="btnSelect" title="Birden fazla kitap seç"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></svg>Seç</button></div>
     </div>
     <div id="notice" class="notice" hidden></div>
     <div id="books" class="books grid"></div>
@@ -133,6 +134,14 @@ Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
     </div>
   </div>
 </dialog>
+
+<div id="selBar" class="selbar" hidden>
+  <span id="selCount"></span>
+  <button class="linkish" id="selAll">Görünenlerin tümünü seç</button>
+  <span class="grow"></span>
+  <button class="btn" id="selCancel">Vazgeç</button>
+  <button class="btn danger-solid" id="selDelete" disabled><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Seçilenleri sil</button>
+</div>
 
 <div id="toast" class="toast" hidden></div>
 <script src="{{ url_for('static', filename='app.js') }}?v={{ version }}"></script>
