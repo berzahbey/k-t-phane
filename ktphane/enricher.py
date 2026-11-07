@@ -26,6 +26,8 @@ class Enricher:
         self.ai = Gemini(lib.data_dir)
         self.status = {"running": False, "done": 0, "pending": 0, "ai_pending": 0, "current": None}
         self._wake = threading.Event()
+        self._ai_wake = threading.Event()
+        self._flush_lock = threading.Lock()
         self._dirty = 0
 
     def _load(self):
@@ -52,9 +54,12 @@ class Enricher:
 
     def wake(self):
         self._wake.set()
+        self._ai_wake.set()
 
     def start(self):
+        # İçerik okuma (yerel, CPU) ve Gemini (ağ, kota) birbirini beklemeden aynı anda çalışır
         threading.Thread(target=self._loop, name="enricher", daemon=True).start()
+        threading.Thread(target=self._ai_loop, name="enricher-ai", daemon=True).start()
 
     def _migrate_lang(self):
         n = 0
@@ -69,35 +74,39 @@ class Enricher:
             self._flush(force=True)
 
     # ---------- iş listesi ----------
-    def _todo(self):
-        """(aşama1 bekleyen dosyalar, yapay zeka bekleyen kitaplar)"""
+    def _todo_stage1(self):
         from .library import _ckey
-        stage1, stage2 = [], []
+        stage1 = []
         with self.lib._lock:
             files = list(self.lib.files.values())
         for f in files:
-            a = self.data.get(_ckey(f))
             if f["broken"] or f["ext"] not in ("epub", "pdf", "txt"):
                 continue
+            a = self.data.get(_ckey(f))
             if not a or a.get("v") != ANALYSIS_VERSION:
                 stage1.append(f)
-        stage1.sort(key=lambda f: (f.get("needs_ocr") is True, f["size"]))  # OCR'lılar en sona
-        if self.ai.enabled:
-            for b in self.lib.books():
-                if b.get("override", {}).get("cat"):
-                    continue  # kullanıcı klasörü belirlemiş, kota harcama
-                keys = [x["ckey"] for x in b["formats"] if x.get("ckey")]
-                ais = [(self.data.get(k) or {}).get("ai") for k in keys]
-                if any(x and not x.get("failed") for x in ais):
-                    continue
-                if any(x and x.get("failed") and x["t"] > time.time() - 3 * 86400 for x in ais):
-                    continue  # yakın zamanda denendi, sonra tekrar denenecek
-                primary = next((x for x in b["formats"] if not x["broken"] and x["ext"] in ("epub", "pdf", "txt")), None)
-                if primary and self.data.get(primary["ckey"]):
-                    stage2.append((b, primary))
-            # en belirsiz kitaplar önce
-            stage2.sort(key=lambda bp: bp[0].get("why", {}).get("conf", 0))
-        return stage1, stage2
+        stage1.sort(key=lambda f: (f.get("needs_ocr") is True, f["size"]))
+        return stage1
+
+    def _todo_stage2(self):
+        """İçeriği okunmuş ama henüz Gemini'ye sorulmamış kitaplar (en belirsizler önce)."""
+        stage2 = []
+        if not self.ai.enabled:
+            return stage2
+        for b in self.lib.books():
+            if b.get("override", {}).get("cat"):
+                continue  # kullanıcı klasörü belirlemiş, kota harcama
+            keys = [x["ckey"] for x in b["formats"] if x.get("ckey")]
+            ais = [(self.data.get(k) or {}).get("ai") for k in keys]
+            if any(x and not x.get("failed") for x in ais):
+                continue
+            if any(x and x.get("failed") and x["t"] > time.time() - 3 * 86400 for x in ais):
+                continue  # yakın zamanda denendi, sonra tekrar denenecek
+            primary = next((x for x in b["formats"] if not x["broken"] and x["ext"] in ("epub", "pdf", "txt")), None)
+            if primary and self.data.get(primary["ckey"]):
+                stage2.append((b, primary))
+        stage2.sort(key=lambda bp: bp[0].get("why", {}).get("conf", 0))
+        return stage2
 
     def _loop(self):
         time.sleep(5)
@@ -106,31 +115,49 @@ class Enricher:
         except Exception:
             log.exception("Dil güncelleme hatası")
         while True:
+            worked = False
             try:
-                worked = self._step()
+                if self.lib.status.get("scanning"):
+                    time.sleep(3)
+                    continue
+                stage1 = self._todo_stage1()
+                self.status["pending"] = len(stage1)
+                if stage1:
+                    self._stage1(stage1[0])
+                    worked = True
             except Exception:
                 log.exception("Analiz hatası")
-                worked = False
             if not worked:
                 self.status.update(running=False, current=None)
                 self._flush(force=True)
                 self._wake.wait(timeout=600)
                 self._wake.clear()
 
-    def _step(self):
-        if self.lib.status.get("scanning"):
-            time.sleep(3)
-            return True
-        stage1, stage2 = self._todo()
-        self.status.update(pending=len(stage1), ai_pending=len(stage2))
-        if stage1:
-            self._stage1(stage1[0])
-            return True
-        if stage2 and self.ai.available():
-            b, primary = stage2[0]
-            self._stage2(b, primary)
-            return True
-        return False
+    def _ai_loop(self):
+        time.sleep(15)
+        while True:
+            try:
+                if not self.ai.available():
+                    self.status["ai_current"] = None
+                    self._ai_wake.wait(timeout=120)
+                    self._ai_wake.clear()
+                    continue
+                queue = self._todo_stage2()
+                self.status["ai_pending"] = len(queue)
+                if not queue:
+                    self.status["ai_current"] = None
+                    self._ai_wake.wait(timeout=120)
+                    self._ai_wake.clear()
+                    continue
+                # listeyi her istekte yeniden hesaplamamak için küçük partiler halinde işle
+                for b, primary in queue[:20]:
+                    if not self.ai.available():
+                        break
+                    self._stage2(b, primary)
+                    self.status["ai_pending"] = max(0, self.status["ai_pending"] - 1)
+            except Exception:
+                log.exception("Gemini döngüsü hatası")
+                time.sleep(60)
 
     def _stage1(self, f):
         from .library import _ckey
@@ -184,7 +211,7 @@ class Enricher:
             return {"error": (r.stderr or r.stdout or "okunamadı")[-200:]}
 
     def _stage2(self, b, primary):
-        self.status.update(running=True, current="Gemini: " + b["title"])
+        self.status["ai_current"] = b["title"]
         a = self.data.get(primary["ckey"]) or {}
         info = {"name": primary["name"], "folders": b.get("folders"), "title": b["title"],
                 "author": b["author"], "subjects": b.get("subjects"), "toc": a.get("toc"),
@@ -205,6 +232,10 @@ class Enricher:
         self._flush()
 
     def _flush(self, force=False):
+        with self._flush_lock:
+            self._flush_locked(force)
+
+    def _flush_locked(self, force=False):
         if force and not self._dirty:
             return
         if not force:

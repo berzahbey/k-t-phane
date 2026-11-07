@@ -60,7 +60,7 @@
     } else {
       p.hidden = true; btn.classList.remove("spin");
       clearInterval(pollTimer); pollTimer = null;
-      if (state.analysis && (state.analysis.pending || (state.analysis.running))) pollTimer = setInterval(poll, 8000);
+      if (state.analysis && (state.analysis.pending || state.analysis.running || state.analysis.ai_current)) pollTimer = setInterval(poll, 8000);
       $("#scanInfo").innerHTML = (s.last_scan ? "Son tarama: " + new Date(s.last_scan * 1000).toLocaleString("tr") : "") + analysisLine();
     }
     if (s.error) showNotice(s.error); else if (!state.noticeSticky) $("#notice").hidden = true;
@@ -72,6 +72,7 @@
     if (a.ai && a.ai.enabled) {
       h += `<br>Gemini: bugün ${a.ai.today}/${a.ai.daily_limit}`;
       if (a.ai_pending) h += ` · ${a.ai_pending.toLocaleString("tr")} kitap sırada`;
+      if (a.ai_current) h += `<br><small>Gemini: ${esc(a.ai_current)}</small>`;
       if (a.ai.paused_until) h += `<br><span style="color:var(--warn)">${esc(a.ai.error || "Duraklatıldı")} — ${new Date(a.ai.paused_until * 1000).toLocaleString("tr")} devam</span>`;
       else if (a.ai.error) h += `<br><span style="color:var(--warn)">${esc(a.ai.error)}</span>`;
     } else if (a.ai) h += `<br>Yapay zeka kapalı · <button class="linkish" data-open-settings>anahtar gir</button>`;
