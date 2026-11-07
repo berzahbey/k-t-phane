@@ -13,7 +13,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const isRtl = (s) => /[؀-ۿ]/.test(s || "");
   const fmtSize = (b) => b > 1 << 30 ? (b / (1 << 30)).toFixed(1) + " GB" : b > 1 << 20 ? (b / (1 << 20)).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
-  const hue = (id) => parseInt(id.slice(0, 6), 16) % 360;
+  const hue = (id) => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; };
 
   const state = {
     books: [], tree: {}, status: {},
@@ -27,6 +27,7 @@
     ocr: { label: "OCR gerekli", test: (b) => b.formats.some((f) => f.ext === "pdf" && f.needs_ocr === true) },
     broken: { label: "Bozuk / okunamadı", test: (b) => b.formats.some((f) => f.broken) },
     multi: { label: "Birden fazla format", test: (b) => b.formats.length > 1 },
+    series: { label: "Koleksiyon (çok ciltli)", test: (b) => !!b.series },
   };
   const fmtGroup = (ext) => (ext === "epub" || ext === "pdf" ? ext.toUpperCase() : "Diğer");
 
@@ -122,7 +123,7 @@
   // ---------- çizim ----------
   function render() {
     renderSidebar();
-    state.filtered = sortBooks(baseFilter());
+    state.filtered = collapse(sortBooks(baseFilter()));
     state.shown = 0;
     const box = $("#books");
     box.className = "books " + state.view;
@@ -130,7 +131,7 @@
     document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
     $("#sort").value = state.sort;
     $("#resultTitle").textContent = state.sub || state.cat || (state.q ? `“${state.q}” için sonuçlar` : "Tüm kitaplar");
-    const n = state.filtered.length;
+    const n = state.filtered.reduce((t, x) => t + (x.isCollection ? x.volumes.length : 1), 0);
     $("#resultCount").textContent = `${n.toLocaleString("tr")} kitap` + (n !== state.books.length ? ` · toplam ${state.books.length.toLocaleString("tr")}` : "");
     renderActiveChips();
     const empty = $("#empty");
@@ -181,11 +182,41 @@
     out.push(`<span class="badge lang">${esc(b.language)}</span>`);
     return out.join("");
   }
+  // Aynı eserin ciltleri tek "koleksiyon" kartında toplanır
+  state.collections = {};
+  function collapse(list) {
+    const out = [], seen = {};
+    state.collections = {};
+    for (const b of list) {
+      if (!b.series_id) { out.push(b); continue; }
+      let c = seen[b.series_id];
+      if (!c) {
+        c = seen[b.series_id] = { isCollection: true, id: b.series_id, title: b.series, author: b.author, language: b.language,
+          category: b.category, subcategory: b.subcategory, cover_id: null, volumes: [], formats: [] };
+        out.push(c);
+      }
+      c.volumes.push(b); c.formats.push(...b.formats);
+    }
+    for (const c of Object.values(seen)) {
+      c.volumes.sort((a, b) => (a.volume || 0) - (b.volume || 0));
+      c.cover_id = (c.volumes.find((v) => v.cover_id) || {}).cover_id || null;
+      c.author = c.author || (c.volumes.find((v) => v.author) || {}).author || "";
+      state.collections[c.id] = c;
+    }
+    return out;
+  }
+  const volLabel = (c) => `${c.volumes.length} cilt`;
   const cardHtml = (b) => {
+    if (b.isCollection) {
+      return `<button class="card collection" data-id="${b.id}"><div class="stack">${coverHtml(b, true)}</div><span class="ti">${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")} · ${volLabel(b)}</span></button>`;
+    }
     const dir = isRtl(b.title) ? ' dir="rtl"' : "";
     return `<button class="card" data-id="${b.id}">${coverHtml(b, true)}<span class="ti"${dir}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span></button>`;
   };
-  const rowHtml = (b) => `<button class="row" data-id="${b.id}">${coverHtml(b, false)}
+  const rowHtml = (b) => b.isCollection ? `<button class="row" data-id="${b.id}">${coverHtml(b, false)}
+    <div style="min-width:0"><div class="ti">${esc(b.title)} <span class="badge">${volLabel(b)}</span></div><div class="sub au-m">${esc(b.author)}</div></div>
+    <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
+    <div class="badges"><span class="badge lang">${esc(b.language)}</span></div></button>` : `<button class="row" data-id="${b.id}">${coverHtml(b, false)}
     <div style="min-width:0"><div class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
     <div class="badges">${badgesHtml(b)}</div></button>`;
@@ -223,7 +254,30 @@
   }
 
   // ---------- detay ----------
+  function openCollection(c) {
+    const vols = c.volumes.map((v) => {
+      const btns = v.formats.map((f) => {
+        const readable = (f.ext === "epub" || f.ext === "pdf" || f.ext === "txt") && !f.broken;
+        const url = f.ext === "epub" ? `/read/${f.id}` : `/file/${f.id}`;
+        return (readable ? `<a class="btn primary sm" href="${url}" target="_blank" rel="noopener">Oku ${f.ext.toUpperCase()}</a>` : "") +
+          `<a class="btn sm" href="/download/${f.id}" title="İndir">↓</a>`;
+      }).join("");
+      return `<div class="vol-row"><button class="vol-open" data-vol="${v.id}"><span class="vol-n">${v.volume ?? "–"}</span><span class="vol-t">${esc(v.title)}</span></button><div class="vol-btns">${btns}</div></div>`;
+    }).join("");
+    $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(c, false)}<div class="d-info">
+      <h2>${esc(c.title)}</h2><div class="by">${esc(c.author || "Yazar bilinmiyor")} · ${volLabel(c)}</div>
+      <dl class="d-meta"><dt>Kategori</dt><dd>${esc(c.category)} › ${esc(c.subcategory)}</dd><dt>Dil</dt><dd>${esc(c.language)}</dd>
+      <dt>Klasör</dt><dd>${esc(c.language)} / ${esc(c.category)} / Koleksiyonlar / ${esc(c.title)}</dd></dl>
+      <div class="vols">${vols}</div></div></div>`;
+    const img = $("#detailBody img[data-src]");
+    if (img) { img.addEventListener("load", () => img.classList.add("ok")); img.addEventListener("error", () => img.remove()); img.src = img.dataset.src; }
+    $("#detailBody").querySelectorAll("[data-vol]").forEach((el) => el.addEventListener("click", () => openDetail(el.dataset.vol)));
+    const dlg = $("#detail"); if (!dlg.open) dlg.showModal();
+    history.replaceState(null, "", "#kitap=" + c.id);
+  }
+
   function openDetail(id) {
+    if (state.collections[id]) return openCollection(state.collections[id]);
     const b = state.books.find((x) => x.id === id);
     if (!b) return;
     const dir = isRtl(b.title) ? ' dir="rtl"' : "";
@@ -418,7 +472,7 @@
   $("#setClear").addEventListener("click", () => { if (confirm("Kayıtlı API anahtarı silinsin mi?")) saveSettings({ gemini_api_key: "" }); });
 
   load().then(() => {
-    const m = location.hash.match(/kitap=([0-9a-f]+)/);
+    const m = location.hash.match(/kitap=([^&]+)/);
     if (m) openDetail(m[1]);
   });
 })();

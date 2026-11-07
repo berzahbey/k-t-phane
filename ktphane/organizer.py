@@ -51,11 +51,24 @@ def _format_dir(f):
     return "Diğer Formatlar"
 
 
+SERIES_DIR = "Koleksiyonlar"
+
+
+def safe_folder(name):
+    """Mac/Windows paylaşımlarında sorun çıkaran karakterleri temizle."""
+    name = re.sub(r'[\\/:*?"<>|]+', " - ", name or "").strip(" .-")
+    return re.sub(r"\s+", " ", name)[:120] or "Adsız"
+
+
 def target_for(book, f):
     sub = _format_dir(f)
     if sub is None:
         return os.path.join(CHECK_DIR, f["name"])
-    return os.path.join(folder_name(book["language"]), folder_name(book["category"]), sub, f["name"])
+    base = os.path.join(folder_name(book["language"]), folder_name(book["category"]))
+    if book.get("series"):
+        # çok ciltli eserler: <Dil>/<Konu>/Koleksiyonlar/<Eser adı>/<dosya>
+        return os.path.join(base, SERIES_DIR, safe_folder(book["series"]), f["name"])
+    return os.path.join(base, sub, f["name"])
 
 
 def _same_place(dst, cur):

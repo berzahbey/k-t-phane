@@ -226,3 +226,18 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .cover .lang-tag.lang-fa { background: rgba(30, 110, 120, .92); }
 .cover .lang-tag.lang-en { background: rgba(40, 70, 150, .92); }
 .cover .lang-tag.lang-nl { background: rgba(200, 95, 20, .92); }
+
+/* ---------- koleksiyonlar ---------- */
+.card.collection .stack { position: relative; margin: 0 8px 0 0; }
+.card.collection .stack::before, .card.collection .stack::after { content: ""; position: absolute; inset: 0; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.card.collection .stack::before { transform: translate(8px, -8px); }
+.card.collection .stack::after { transform: translate(4px, -4px); }
+.card.collection .stack .cover { z-index: 1; }
+.vols { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow: auto; }
+.vol-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 9px; }
+.vol-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: transparent; text-align: left; padding: 0; }
+.vol-n { flex: none; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 12.5px; }
+.vol-t { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13.5px; }
+.vol-open:hover .vol-t { text-decoration: underline; }
+.vol-btns { display: flex; gap: 6px; flex: none; }
+.btn.sm { height: 30px; padding: 0 9px; font-size: 12.5px; }

@@ -27,6 +27,9 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   Önce önizleme gösterir; onaydan sonra yeni eklenen kitaplar da otomatik düzenlenir. Dosya silinmez,
   her taşıma kaydedilir ve “Son düzenlemeyi geri al” ile geri döndürülebilir. Bir kitabı elle başka bir
   dil/konu klasörüne koyarsanız uygulama sizin seçiminizi esas alır.
+- **Koleksiyonlar**: Aynı eserin ciltleri (“İhya 1…8”, “Mesnevi Cilt 2”, “Tarih Vol. II”) tek bir koleksiyon
+  kartında toplanır; klasörde `<Dil>/<Konu>/Koleksiyonlar/<Eser adı>/` altında birlikte durur. Tüm ciltler
+  aynı kategori ve dile konur.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)

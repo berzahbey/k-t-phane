@@ -310,7 +310,15 @@ class Library:
                 return self._books_cache[1]
             files = list(self.files.values())
         groups = {}
+        from .series import split_volume
         for f in files:
+            # EPUB içindeki başlıkta cilt numarası yoksa ama dosya adında varsa ("Mesnevi Cilt 2.epub"
+            # içinde başlık sadece "Mesnevi") ciltler tek kitapta birleşmesin
+            if split_volume(f["title"])[0] is None:
+                fn_title, _ = parse_filename(f["name"])
+                _, n = split_volume(fn_title)
+                if n:
+                    f = {**f, "title": f"{f['title']} {n}"}
             key = group_key(f["title"], f["author"]) or f["id"]
             g = groups.get(key)
             if g is None:
@@ -360,6 +368,8 @@ class Library:
                     override.setdefault(k, v)
             self._decide(g, override, user_folders)
             out.append(g)
+        from .series import assign as assign_series
+        assign_series(out)
         out.sort(key=lambda b: b["title"].casefold())
         with self._lock:
             self._books_cache = (ver, out)
