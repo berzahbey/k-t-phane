@@ -33,6 +33,10 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
 - **Silme**: Kitap detayında her formatın yanında *Sil*; birden fazla format veya koleksiyon için “tümüyle sil”.
   İki aşamalı onay ister ve dosyayı sunucudan **kalıcı** olarak siler (çöp kutusu yok). Silinenlerin adı/yolu
   `/data/silinenler-kaydi.json` dosyasına not edilir.
+- **Kopyalar**: Aynı kitabın aynı formattaki kopyaları bulunur; en iyi durumdaki (metin tabanlı > taranmış,
+  eksiksiz > eksik, sağlam > bozuk) kalır, diğerleri iki aşamalı onayla silinir. *Kesin* kopyalar (birebir aynı
+  dosya ya da aynı sayfa sayılı aynı PDF) istenirse yeni eklendiğinde otomatik temizlenir; *muhtemel* kopyalar
+  (farklı baskı/çeviri olabilir) yalnızca listelenir. Farklı formatlar (EPUB + PDF) kopya sayılmaz.
 - **Toplu seçim**: “Seç” ile kitaplar/koleksiyonlar işaretlenir; “Görünenlerin tümünü seç” filtre ve aramayla
   birlikte çalışır; “Seçilenleri sil” aynı iki aşamalı onayla toplu siler.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.

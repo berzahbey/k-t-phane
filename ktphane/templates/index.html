@@ -34,6 +34,9 @@
     <button class="icon-btn" id="btnSettings" title="Ayarlar" aria-label="Ayarlar">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
+    <button class="btn" id="btnDupes" title="Aynı kitabın kopyalarını bul">
+      <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span class="hide-sm">Kopyalar</span><span class="count-badge" id="dupBadge" hidden></span>
+    </button>
     <button class="btn" id="btnOrganize" title="Klasörleri Dil / Konu / Format yapısına göre düzenle">
       <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 13h8M12 9v8"/></svg><span class="hide-sm">Düzenle</span><span class="dot" id="orgDot" hidden></span>
     </button>
@@ -120,6 +123,17 @@ Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
       <button class="btn" id="setClear" style="margin-left:auto">Anahtarı sil</button>
     </div>
 
+  </div>
+</dialog>
+
+<dialog id="dupes" class="detail org">
+  <form method="dialog"><button class="icon-btn close" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  <div class="org-body">
+    <h2>Kopya kitaplar</h2>
+    <p class="muted small">Aynı kitabın aynı formattaki kopyaları. Her grupta en iyi durumdaki dosya
+      (<b>Kalsın</b>) önceden seçilidir: metin tabanlı PDF taranmıştan, eksiksiz (sayfası çok) olan eksikten,
+      bozuk olmayan bozuktan iyidir. Farklı formatlar (EPUB + PDF) kopya sayılmaz.</p>
+    <div id="dupContent"><div class="skeleton" style="aspect-ratio:auto;height:120px"></div></div>
   </div>
 </dialog>
 

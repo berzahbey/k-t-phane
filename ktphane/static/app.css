@@ -278,3 +278,31 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 @media (max-width: 900px) { .books.selecting .row { grid-template-columns: 24px 36px minmax(0, 1fr) auto; } }
 .selbar:not([hidden]) ~ .toast { bottom: 92px; }
 .main:has(.books.selecting) { padding-bottom: 120px; }
+
+/* ---------- kopyalar ---------- */
+.count-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--danger); color: #fff; font-size: 11px; display: inline-grid; place-items: center; }
+.dup-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; max-height: 52vh; overflow: auto; }
+.dup-group { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.dup-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+.dup-head input { width: 18px; height: 18px; accent-color: var(--accent); margin-top: 2px; }
+.dup-title { flex: 1; min-width: 0; }
+.dup-title .small { margin-top: 3px; }
+.dup-file { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.dup-file:hover { background: var(--surface-2); }
+.dup-file input { accent-color: var(--accent); flex: none; }
+.dup-file-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dup-path { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dup-tag { flex: none; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; }
+.dup-tag.keep { background: var(--ok-soft); color: var(--ok); }
+.dup-tag.del { display: none; background: var(--danger-soft); color: var(--danger); }
+.dup-file.del .dup-tag.keep { display: none; }
+.dup-file.del .dup-tag.del { display: inline; }
+.dup-file.del .dup-path { color: var(--muted); text-decoration: line-through; }
+.dup-group:has(.dup-head input:not(:checked)) .dup-file.del .dup-tag.del { opacity: .35; }
+.dup-group:has(.dup-head input:not(:checked)) .dup-file.del .dup-path { text-decoration: none; }
+.dup-foot { position: sticky; bottom: 0; background: var(--surface); padding-top: 10px; }
+.dup-foot .grow { flex: 1; }
+.dup-ign { margin-top: 14px; font-size: 13px; }
+.dup-ign summary { cursor: pointer; color: var(--muted); }
+.dup-ign-row { padding: 4px 0 4px 14px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }

@@ -253,6 +253,10 @@ class Enricher:
                 except OSError as e:
                     log.warning("analysis.json yazılamadı: %s", e)
                 self._dirty = 0
+                dd = getattr(self.lib, "dedupe", None)
+                if dd and dd.state.get("auto"):
+                    from . import organizer as _org
+                    _org.run_in_background(self.lib, lambda lib: lib.dedupe.auto_clean())
                 if self.lib.org.get("auto"):
                     from . import organizer
                     if organizer.writable(self.lib):

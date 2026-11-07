@@ -33,6 +33,8 @@ def create_app():
     lib.enricher = Enricher(lib)
     from .trash import Trash
     lib.trash = Trash(lib)
+    from .dedupe import Dedupe
+    lib.dedupe = Dedupe(lib)
     lib.start_background()
     lib.enricher.start()
     app.extensions["library"] = lib
@@ -164,6 +166,31 @@ def create_app():
             return jsonify(error="Silinecek dosya seçilmedi"), 400
         done, errors = lib.trash.delete(ids, title=d.get("title") or "")
         return jsonify(deleted=done, errors=errors)
+
+    # ---------- kopyalar ----------
+    @app.get("/api/duplicates")
+    def dup_list():
+        groups = lib.dedupe.find()
+        active = [g for g in groups if not g["ignored"]]
+        return jsonify(groups=groups, auto=bool(lib.dedupe.state.get("auto")),
+                       count=len(active), extra=sum(len(g["files"]) - 1 for g in active))
+
+    @app.post("/api/duplicates/ignore")
+    def dup_ignore():
+        d = request.get_json(silent=True) or {}
+        ign = set(lib.dedupe.state.get("ignored", []))
+        for k in d.get("keys") or []:
+            (ign.discard if d.get("undo") else ign.add)(k)
+        lib.dedupe.state["ignored"] = sorted(ign)
+        lib.dedupe.save_state()
+        return jsonify(ok=True)
+
+    @app.post("/api/duplicates/auto")
+    def dup_auto():
+        d = request.get_json(silent=True) or {}
+        lib.dedupe.state["auto"] = bool(d.get("on")) and d.get("confirm") == "KALICI-SIL"
+        lib.dedupe.save_state()
+        return jsonify(auto=lib.dedupe.state["auto"])
 
     def _rec(fid):
         rec = lib.get_file(fid)

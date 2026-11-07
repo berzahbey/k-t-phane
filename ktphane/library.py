@@ -204,6 +204,12 @@ class Library:
                     self.trash.auto_purge()
                 except Exception:
                     log.exception("Çöp temizleme hatası")
+            if getattr(self, "dedupe", None) and not self.status.get("error"):
+                try:
+                    if self.dedupe.auto_clean():
+                        self._scan_locked()
+                except Exception:
+                    log.exception("Kopya temizleme hatası")
             if self.org.get("auto") and not self.status.get("error"):
                 from . import organizer
                 if organizer.writable(self):

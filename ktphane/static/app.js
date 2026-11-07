@@ -489,6 +489,87 @@
     if (ok) setSelecting(false);
   });
 
+  // ---------- kopyalar ----------
+  let dupData = null;
+  async function loadDupes() {
+    const d = await fetch("/api/duplicates", { cache: "no-store" }).then((r) => r.json());
+    dupData = d;
+    const badge = $("#dupBadge"); badge.hidden = !d.extra; badge.textContent = d.extra;
+    return d;
+  }
+  function dupRender() {
+    const d = dupData, box = $("#dupContent");
+    const active = d.groups.filter((g) => !g.ignored), ignored = d.groups.filter((g) => g.ignored);
+    let h = `<div class="org-actions" style="margin-top:0"><label class="switch"><input type="checkbox" id="dupAuto" ${d.auto ? "checked" : ""}>Yeni eklenen <b>kesin</b> kopyaları otomatik sil (iyi olan kalır)</label></div>`;
+    if (!active.length) h += `<div class="org-card ok">Kopya kitap yok. ✓</div>`;
+    else h += `<div class="org-card"><b>${active.length}</b> kitapta <b>${d.extra}</b> fazla dosya var.
+      <span class="muted">Kesin kopyalar önceden işaretli; “muhtemel” olanlar farklı baskı veya çeviri olabilir, kontrol edip işaretleyin.</span></div>`;
+    h += `<div class="dup-list">` + active.map((g) => dupGroupHtml(g)).join("") + `</div>`;
+    if (active.length) h += `<div class="org-actions dup-foot"><button class="linkish" id="dupAll">Tümünü işaretle</button><span class="grow"></span><button class="btn danger-solid" id="dupDelete"></button></div>`;
+    if (ignored.length) h += `<details class="dup-ign"><summary>Kopya değil olarak işaretlenen ${ignored.length} grup</summary>${ignored.map((g) => `<div class="dup-ign-row">${esc(g.title)} <button class="linkish" data-unignore="${esc(g.key)}">geri al</button></div>`).join("")}</details>`;
+    box.innerHTML = h;
+    updateDupButton();
+    box.querySelectorAll(".dup-group input[type=checkbox]").forEach((c) => c.addEventListener("change", updateDupButton));
+    box.querySelectorAll(".dup-group input[type=radio]").forEach((r) => r.addEventListener("change", () => {
+      const g = r.closest(".dup-group");
+      g.querySelectorAll(".dup-file").forEach((row) => row.classList.toggle("del", !row.querySelector("input[type=radio]").checked));
+      updateDupButton();
+    }));
+    box.querySelectorAll("[data-ignore]").forEach((b) => b.addEventListener("click", async () => {
+      await fetch("/api/duplicates/ignore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keys: [b.dataset.ignore] }) });
+      await loadDupes(); dupRender();
+    }));
+    box.querySelectorAll("[data-unignore]").forEach((b) => b.addEventListener("click", async () => {
+      await fetch("/api/duplicates/ignore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keys: [b.dataset.unignore], undo: true }) });
+      await loadDupes(); dupRender();
+    }));
+    $("#dupAll")?.addEventListener("click", () => { box.querySelectorAll(".dup-group > .dup-head input[type=checkbox]").forEach((c) => (c.checked = true)); updateDupButton(); });
+    $("#dupDelete")?.addEventListener("click", async () => {
+      const ids = dupSelectedIds(); if (!ids.length) return;
+      const ok = await deleteFiles(ids, "Kopya kitaplar", `${ids.length} kopya dosya (her grupta “Kalsın” işaretli olan kalacak)`);
+      if (ok) { await loadDupes(); dupRender(); }
+    });
+    $("#dupAuto").addEventListener("change", async (e) => {
+      const on = e.target.checked;
+      if (on) {
+        const ok1 = await ask({ step: "1 / 2", title: "Otomatik kopya temizliği açılsın mı?", body: "Her taramadan sonra <b>kesin</b> kopyalarda (birebir aynı dosya veya aynı kitabın aynı sayfa sayılı PDF'i) iyi olan kalacak, diğeri silinecek. “Muhtemel” kopyalara dokunulmaz.", ok: "Aç" });
+        const ok2 = ok1 && await ask({ step: "2 / 2", title: "Emin misiniz?", body: "Otomatik silinen dosyalar <b>kalıcı olarak</b> silinir, geri getirilemez. Silinenler /data/silinenler-kaydi.json dosyasına not edilir.", ok: "Evet, otomatik sil" });
+        if (!ok2) { e.target.checked = false; return; }
+      }
+      const r = await fetch("/api/duplicates/auto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on, confirm: "KALICI-SIL" }) }).then((r) => r.json());
+      e.target.checked = r.auto; toast(r.auto ? "Otomatik kopya temizliği açık" : "Otomatik kopya temizliği kapalı");
+    });
+  }
+  function dupGroupHtml(g) {
+    const pre = g.kind === "kesin" && !g.pending;
+    return `<div class="dup-group" data-key="${esc(g.key)}"><div class="dup-head">
+      <label class="dup-check"><input type="checkbox" ${pre ? "checked" : ""}></label>
+      <div class="dup-title"><b>${esc(g.title)}</b>${g.author ? ` <span class="muted">· ${esc(g.author)}</span>` : ""}
+        <div class="small"><span class="badge ${g.kind === "kesin" ? "broken" : "ocr"}">${g.kind === "kesin" ? "Kesin kopya" : "Muhtemel kopya"}</span> <span class="muted">${esc(g.reason)}${g.pending ? " · analiz bekleniyor" : ""}</span></div></div>
+      <button class="linkish" data-ignore="${esc(g.key)}" title="Bu grup bir daha önerilmesin">Kopya değil</button></div>` +
+      g.files.map((f, i) => `<label class="dup-file ${f.keep ? "" : "del"}"><input type="radio" name="keep-${esc(g.key)}" value="${f.id}" ${f.keep ? "checked" : ""}>
+        <span class="dup-file-main"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="muted small">${esc(f.why)}</span></span>
+        <span class="dup-tag keep">Kalsın</span><span class="dup-tag del">Silinecek</span></label>`).join("") + `</div>`;
+  }
+  function dupSelectedIds() {
+    const ids = [];
+    document.querySelectorAll("#dupContent .dup-group").forEach((g) => {
+      if (!g.querySelector(".dup-head input[type=checkbox]").checked) return;
+      g.querySelectorAll(".dup-file").forEach((row) => { const r = row.querySelector("input[type=radio]"); if (!r.checked) ids.push(r.value); });
+    });
+    return ids;
+  }
+  function updateDupButton() {
+    const b = $("#dupDelete"); if (!b) return;
+    const n = dupSelectedIds().length;
+    b.disabled = !n; b.textContent = n ? `İşaretli gruplardaki ${n} kopyayı sil` : "Silinecek grup seçin";
+  }
+  $("#btnDupes").addEventListener("click", async () => {
+    $("#dupes").showModal(); $("#dupContent").innerHTML = `<div class="org-card">Kopyalar aranıyor… (ilk seferde aynı boyuttaki dosyalar karşılaştırılır, biraz sürebilir)</div>`;
+    try { await loadDupes(); dupRender(); } catch (e) { $("#dupContent").innerHTML = `<div class="org-card warn">${esc(e.message)}</div>`; }
+  });
+  $("#dupes").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
   // ---------- silme (iki aşamalı onay, kalıcı) ----------
   function ask({ step, title, body, ok }) {
     return new Promise((resolve) => {
@@ -576,6 +657,7 @@
   });
   $("#setClear").addEventListener("click", () => { if (confirm("Kayıtlı API anahtarı silinsin mi?")) saveSettings({ gemini_api_key: "" }); });
 
+  setTimeout(() => loadDupes().catch(() => {}), 8000);
   load().then(() => {
     const m = location.hash.match(/kitap=([^&]+)/);
     if (m) openDetail(m[1]);
