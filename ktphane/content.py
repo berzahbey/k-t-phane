@@ -156,12 +156,16 @@ _LATIN = {
                 "avec il plus",
 }
 _ARABIC_SCRIPT = {
-    "Arapça": "في من على إلى الى عن التي الذي هذا هذه ذلك كان قال أن ان لا ما وهو وهي ثم قد كل بن "
-              "الله عليه وسلم إن",
-    "Osmanlıca": "ve بر ایله ایچون ایچین اولان اولدیغی اولور ایدی دخی ایسه اوله اولمق حقنده طرفندن "
-                 "ایلە کبی دها اولنور اولنان ایدر ایتمک اوزره",
-    "Farsça": "است این که را از با برای می آن بود شد یک هم تا خود کرد نیز اند های",
+    "Arapça": "في من على إلى الى عن التي الذي الذين هذا هذه ذلك تلك كان كانت قال أن ان لا ما وهو وهي "
+              "ثم قد كل بن الله عليه وسلم إن إذا لم لن حتى بعد قبل بين أو أي غير",
+    "Osmanlıca": "بر ایله ايله ایچون ايچون ایچین اولان اولدیغی اولور ایدی ايدى دخی دخى ایسه اوله اولمق "
+                 "حقنده طرفندن کبی كبى دها اولنور اولنان ایدر ایتمک ایتمك اوزره بو شو دیو ایچنده "
+                 "بیک کندی هپ دکل دكل اولوب اولدی ایتدی اولنمش ایدن دیمک ایدرک ایکن ایمش اولمش "
+                 "اولدقده نه کیم ایچره ایله‌ ابتدا لکن بیله",
+    "Farsça": "است این که را از با برای می آن بود شد یک هم تا خود کرد نیز اند های نمی باشد",
 }
+# Türkçe ekler: -ler/-lar, mastar -mek/-mak, -dır (Arapça'da bu kalıplar nadirdir)
+_OTTOMAN_SUFFIX = re.compile(r"[\u0600-\u06FF]{2,}(?:لر|لری|لرى|لرک|لرك|لرینی|لرده|لردن|لرینه|مق|مك|مک|دیر|دير)$")
 _LATIN_SETS = {k: set(words(v)) for k, v in _LATIN.items()}
 _AR_SETS = {k: set(v.split()) for k, v in _ARABIC_SCRIPT.items()}
 
@@ -178,6 +182,7 @@ def detect_text_language(text):
         scores = {k: sum(1 for t in toks if t in s) for k, s in _AR_SETS.items()}
         # Osmanlıca/Farsça'ya özgü harfler
         scores["Osmanlıca"] += len(re.findall(r"[ڭ]", sample)) * 3
+        scores["Osmanlıca"] += sum(1 for t in toks if _OTTOMAN_SUFFIX.match(t))
         if re.search(r"[پچژگ]", sample):
             scores["Farsça"] += 1
             scores["Osmanlıca"] += 1

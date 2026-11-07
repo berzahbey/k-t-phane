@@ -15,6 +15,7 @@ from .categories import classify_text
 
 log = logging.getLogger("ktphane.enricher")
 ANALYSIS_VERSION = 1
+LANG_VERSION = 2  # dil tespiti iyileşince kayıtlı örnek metinden yeniden hesaplanır (dosya tekrar okunmaz)
 
 
 class Enricher:
@@ -55,6 +56,18 @@ class Enricher:
     def start(self):
         threading.Thread(target=self._loop, name="enricher", daemon=True).start()
 
+    def _migrate_lang(self):
+        n = 0
+        for a in list(self.data.values()):
+            if a.get("lang_v") != LANG_VERSION and a.get("sample"):
+                a["lang"], a["lang_conf"] = content.detect_text_language(a["sample"])
+                a["lang_v"] = LANG_VERSION
+                n += 1
+        if n:
+            log.info("Dil tespiti %d kitap için güncellendi", n)
+            self._dirty = max(self._dirty, 1)
+            self._flush(force=True)
+
     # ---------- iş listesi ----------
     def _todo(self):
         """(aşama1 bekleyen dosyalar, yapay zeka bekleyen kitaplar)"""
@@ -88,6 +101,10 @@ class Enricher:
 
     def _loop(self):
         time.sleep(5)
+        try:
+            self._migrate_lang()
+        except Exception:
+            log.exception("Dil güncelleme hatası")
         while True:
             try:
                 worked = self._step()
@@ -127,7 +144,7 @@ class Enricher:
             text = ex.get("text") or ""
             lang, lconf = content.detect_text_language(text)
             main, sub, score, ratio = classify_text(text, ex.get("toc") or [])
-            entry.update(lang=lang, lang_conf=lconf, ocr=ex.get("ocr"), chars=len(text),
+            entry.update(lang=lang, lang_conf=lconf, lang_v=LANG_VERSION, ocr=ex.get("ocr"), chars=len(text),
                          kw={"cat": main, "sub": sub, "score": score, "ratio": ratio},
                          toc=(ex.get("toc") or [])[:30], sample=text[:3500])
             for k in ("pages", "needs_ocr", "encrypted"):

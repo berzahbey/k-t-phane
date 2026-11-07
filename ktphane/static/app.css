@@ -217,3 +217,12 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .field-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .org-body a { color: var(--accent); }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* dil etiketi (kapakta sol alt) */
+.cover .lang-tag { position: absolute; left: 6px; bottom: 6px; height: 19px; padding: 0 6px; border-radius: 4px; display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 700; color: #fff; background: rgba(0,0,0,.62); backdrop-filter: blur(4px); max-width: calc(100% - 70px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cover .lang-tag.lang-tr { background: rgba(176, 42, 42, .9); }
+.cover .lang-tag.lang-osm { background: rgba(122, 82, 20, .92); }
+.cover .lang-tag.lang-ar { background: rgba(28, 110, 74, .92); }
+.cover .lang-tag.lang-fa { background: rgba(30, 110, 120, .92); }
+.cover .lang-tag.lang-en { background: rgba(40, 70, 150, .92); }
+.cover .lang-tag.lang-nl { background: rgba(200, 95, 20, .92); }

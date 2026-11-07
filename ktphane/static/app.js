@@ -165,8 +165,11 @@
     const h = hue(b.id), dir = isRtl(b.title) ? ' dir="rtl"' : "";
     const img = b.cover_id ? `<img data-src="/cover/${b.cover_id}" alt="" loading="lazy" decoding="async">` : "";
     const fmts = withFmt ? `<span class="fmt">${[...new Set(b.formats.map((f) => f.ext.toUpperCase()))].map((e) => `<span class="badge">${e}</span>`).join("")}</span>` : "";
-    return `<div class="cover"><div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${fmts}</div>`;
+    const lang = withFmt && b.language ? `<span class="lang-tag lang-${langCode(b.language).toLowerCase()}" title="${esc(b.language)}">${esc(b.language)}</span>` : "";
+    return `<div class="cover"><div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${lang}${fmts}</div>`;
   }
+  const LANG_CODES = { "Türkçe": "TR", "Osmanlıca": "OSM", "Osmanlıca / Farsça": "OSM", "Arapça": "AR", "Farsça": "FA", "English": "EN", "Nederlands": "NL", "Deutsch": "DE", "Français": "FR" };
+  const langCode = (l) => LANG_CODES[l] || "XX";
   function badgesHtml(b) {
     const out = [];
     for (const f of b.formats) {
