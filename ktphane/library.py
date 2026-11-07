@@ -316,6 +316,22 @@ class Library:
             files = list(self.files.values())
         groups = {}
         from .series import split_volume
+        # Toplu indirilen paketlerde EPUB'ların içindeki başlık hep aynı olabiliyor
+        # ("Tasavvuf Kütüphanesi (100+ kitap pdf)"). Aynı iç başlığı taşıyan ve dosya adları farklı
+        # 3+ dosya varsa o iç başlık geçersiz sayılır, dosya adındaki başlık kullanılır.
+        by_meta = {}
+        for f in files:
+            if f.get("meta_title"):
+                by_meta.setdefault(fold(f["meta_title"]), set()).add(fold(parse_filename(f["name"])[0]))
+        junk_meta = {k for k, names in by_meta.items() if len(names) >= 3}
+        if junk_meta:
+            fixed = []
+            for f in files:
+                if f.get("meta_title") and fold(f["meta_title"]) in junk_meta:
+                    fn_title, fn_author = parse_filename(f["name"])
+                    f = {**f, "title": fn_title or f["name"], "author": f["author"] or fn_author}
+                fixed.append(f)
+            files = fixed
         for f in files:
             # EPUB içindeki başlıkta cilt numarası yoksa ama dosya adında varsa ("Mesnevi Cilt 2.epub"
             # içinde başlık sadece "Mesnevi") ciltler tek kitapta birleşmesin
