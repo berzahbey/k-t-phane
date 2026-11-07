@@ -71,6 +71,82 @@ class Gemini:
         self.paused_until = 0
         self.last_error = None
         self.usage = self._load_usage()
+        self.settings_file = os.path.join(data_dir, "settings.json")
+        self.key_source = "env" if self.key else None
+        self._apply_settings(self._load_settings())
+
+    # ---------- uygulama içinden girilen ayarlar (/data/settings.json) ----------
+    def _load_settings(self):
+        try:
+            with open(self.settings_file, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _apply_settings(self, st):
+        if st.get("gemini_api_key"):
+            self.key, self.key_source = st["gemini_api_key"].strip(), "app"
+        if st.get("gemini_model"):
+            self.model = st["gemini_model"].strip()
+        if st.get("gemini_daily_limit"):
+            self.daily_limit = int(st["gemini_daily_limit"])
+
+    def update_settings(self, key=None, model=None, daily_limit=None):
+        st = self._load_settings()
+        if key is not None:
+            key = key.strip()
+            if key:
+                st["gemini_api_key"] = key
+            else:  # silindi: ortam değişkenine geri dön
+                st.pop("gemini_api_key", None)
+                self.key = os.environ.get("GEMINI_API_KEY", "").strip()
+                self.key_source = "env" if self.key else None
+        if model:
+            st["gemini_model"] = model.strip()
+        if daily_limit:
+            st["gemini_daily_limit"] = max(1, min(100000, int(daily_limit)))
+        tmp = self.settings_file + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(st, f)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.settings_file)
+        self._apply_settings(st)
+        self.paused_until, self.last_error = 0, None
+
+    def public_settings(self):
+        k = self.key or ""
+        hint = (k[:4] + "…" + k[-4:]) if len(k) > 10 else ("•••" if k else "")
+        return {"has_key": bool(k), "key_hint": hint, "key_source": self.key_source,
+                "model": self.model, "daily_limit": self.daily_limit, "rpm": self.rpm}
+
+    def test(self):
+        """Anahtarı küçük bir istekle dener. (ok, mesaj)"""
+        if not self.key:
+            return False, "Anahtar girilmemiş"
+        body = {"contents": [{"role": "user", "parts": [{"text": "Sadece 'tamam' yaz."}]}],
+                "generationConfig": {"maxOutputTokens": 10}}
+        req = urllib.request.Request(API.format(model=self.model), method="POST",
+                                     data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json", "x-goog-api-key": self.key})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                json.load(r)
+            self._count()
+            self.paused_until, self.last_error = 0, None
+            return True, f"Bağlantı başarılı ({self.model})"
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "ignore")
+            m = re.search(r'"message":\s*"([^"]+)', detail)
+            msg = m.group(1) if m else detail[:200]
+            if e.code in (400, 401, 403) and re.search(r"API key|API_KEY", detail):
+                return False, "API anahtarı geçersiz: " + msg
+            if e.code == 404:
+                return False, f"Model bulunamadı ({self.model}): " + msg
+            if e.code == 429:
+                return True, "Anahtar geçerli ama şu an kota dolu; uygulama bekleyip devam edecek"
+            return False, f"Hata {e.code}: {msg}"
+        except Exception as e:
+            return False, f"Bağlantı kurulamadı: {e}"
 
     @property
     def enabled(self):

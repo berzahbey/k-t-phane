@@ -123,6 +123,31 @@ def create_app():
         lib.save_org()
         return jsonify(_org_state())
 
+    # ---------- ayarlar ----------
+    @app.get("/api/settings")
+    def settings_get():
+        return jsonify(ai=lib.enricher.ai.public_settings(), ai_status=lib.enricher.ai.status())
+
+    @app.post("/api/settings")
+    def settings_post():
+        d = request.get_json(silent=True) or {}
+        ai = lib.enricher.ai
+        try:
+            ai.update_settings(key=d.get("gemini_api_key"), model=d.get("gemini_model"),
+                               daily_limit=d.get("gemini_daily_limit"))
+        except (ValueError, OSError) as e:
+            return jsonify(error=str(e)), 400
+        ok, msg = ai.test() if ai.enabled and d.get("gemini_api_key") else (None, None)
+        lib.enricher.wake()
+        return jsonify(ai=ai.public_settings(), ai_status=ai.status(), test_ok=ok, test_message=msg)
+
+    @app.post("/api/settings/test")
+    def settings_test():
+        ok, msg = lib.enricher.ai.test()
+        if ok:
+            lib.enricher.wake()
+        return jsonify(ok=ok, message=msg, ai_status=lib.enricher.ai.status())
+
     def _rec(fid):
         rec = lib.get_file(fid)
         if not rec:

@@ -29,6 +29,9 @@
       <button data-view="grid" class="active" aria-label="Kart görünümü"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button>
       <button data-view="list" aria-label="Liste görünümü"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     </div>
+    <button class="icon-btn" id="btnSettings" title="Ayarlar" aria-label="Ayarlar">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
     <button class="btn" id="btnOrganize" title="Klasörleri Dil / Konu / Format yapısına göre düzenle">
       <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 13h8M12 9v8"/></svg><span class="hide-sm">Düzenle</span><span class="dot" id="orgDot" hidden></span>
     </button>
@@ -89,6 +92,30 @@ English/ · Arapça/ · Osmanlıca/ …
 Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
     <p class="muted small">İpucu: Bir kitabı elle başka bir dil veya konu klasörüne taşırsan (örn. <b>Arapça/Felsefe</b>), uygulama senin seçimini esas alır.</p>
     <div id="orgContent"><div class="skeleton" style="aspect-ratio:auto;height:120px"></div></div>
+  </div>
+</dialog>
+
+<dialog id="settings" class="detail org">
+  <form method="dialog"><button class="icon-btn close" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  <div class="org-body">
+    <h2>Ayarlar</h2>
+    <h3 class="set-h">Yapay zeka (Gemini — ücretsiz katman)</h3>
+    <p class="muted small">Kitapların içeriğine bakarak kategori, dil, başlık ve yazarı belirler. Anahtarı
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
+      adresinden alın; ücretsiz kalması için <b>faturalandırması kapalı</b> bir proje seçin. Boş bırakılırsa
+      uygulama yapay zekasız (içerik + kurallar) çalışır.</p>
+    <div id="setStatus" class="org-card" hidden></div>
+    <label class="field"><span>API anahtarı</span>
+      <input id="setKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
+    <div class="field-row">
+      <label class="field"><span>Günlük üst sınır (istek)</span><input id="setLimit" type="number" min="1" max="100000"></label>
+      <label class="field"><span>Model</span><input id="setModel" type="text" spellcheck="false"></label>
+    </div>
+    <div class="org-actions">
+      <button class="btn primary" id="setSave">Kaydet ve dene</button>
+      <button class="btn" id="setTest">Bağlantıyı dene</button>
+      <button class="btn" id="setClear" style="margin-left:auto">Anahtarı sil</button>
+    </div>
   </div>
 </dialog>
 

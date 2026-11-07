@@ -73,7 +73,7 @@
       if (a.ai_pending) h += ` · ${a.ai_pending.toLocaleString("tr")} kitap sırada`;
       if (a.ai.paused_until) h += `<br><span style="color:var(--warn)">${esc(a.ai.error || "Duraklatıldı")} — ${new Date(a.ai.paused_until * 1000).toLocaleString("tr")} devam</span>`;
       else if (a.ai.error) h += `<br><span style="color:var(--warn)">${esc(a.ai.error)}</span>`;
-    } else if (a.ai) h += `<br><span title="docker-compose içinde GEMINI_API_KEY tanımlayın">Yapay zeka kapalı (anahtar yok)</span>`;
+    } else if (a.ai) h += `<br>Yapay zeka kapalı · <button class="linkish" data-open-settings>anahtar gir</button>`;
     return h;
   }
   let lastCount = -1;
@@ -371,6 +371,48 @@
   }
   $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
   $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+  // ---------- ayarlar ----------
+  function setStatus(msg, kind) {
+    const el = $("#setStatus"); el.hidden = !msg; el.className = "org-card " + (kind || ""); el.innerHTML = msg || "";
+  }
+  async function openSettings() {
+    $("#settings").showModal(); setStatus("");
+    try {
+      const d = await (await fetch("/api/settings", { cache: "no-store" })).json();
+      const ai = d.ai, st = d.ai_status;
+      $("#setKey").value = ""; $("#setKey").placeholder = ai.has_key ? `Kayıtlı: ${ai.key_hint}${ai.key_source === "env" ? " (compose)" : ""} — değiştirmek için yenisini yapıştırın` : "AIza…";
+      $("#setLimit").value = ai.daily_limit; $("#setModel").value = ai.model;
+      if (ai.has_key) setStatus(st.paused_until ? `${esc(st.error || "Duraklatıldı")} — ${new Date(st.paused_until * 1000).toLocaleString("tr")} devam edecek. Bugün: ${st.today}/${st.daily_limit}` : st.error ? esc(st.error) : `Yapay zeka açık · bugün ${st.today}/${st.daily_limit} istek`, st.error ? "warn" : "ok");
+      else setStatus("Yapay zeka kapalı — anahtar girilmemiş.", "");
+    } catch (e) { setStatus("Ayarlar okunamadı: " + esc(e.message), "warn"); }
+  }
+  async function saveSettings(body) {
+    setStatus("Kaydediliyor ve deneniyor…");
+    try {
+      const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      if (d.test_ok === false) setStatus(esc(d.test_message), "warn");
+      else { setStatus(d.test_message ? "✓ " + esc(d.test_message) + " — kitaplar arka planda incelenmeye başlayacak." : "Kaydedildi.", "ok"); $("#setKey").value = ""; }
+      $("#setKey").placeholder = d.ai.has_key ? `Kayıtlı: ${d.ai.key_hint}` : "AIza…";
+      poll();
+    } catch (e) { setStatus("Kaydedilemedi: " + esc(e.message), "warn"); }
+  }
+  $("#btnSettings").addEventListener("click", openSettings);
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-open-settings]")) openSettings(); });
+  $("#settings").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  $("#setSave").addEventListener("click", () => {
+    const body = { gemini_model: $("#setModel").value, gemini_daily_limit: $("#setLimit").value };
+    if ($("#setKey").value.trim()) body.gemini_api_key = $("#setKey").value.trim();
+    saveSettings(body);
+  });
+  $("#setTest").addEventListener("click", async () => {
+    setStatus("Deneniyor…");
+    const d = await (await fetch("/api/settings/test", { method: "POST" })).json().catch(() => ({ ok: false, message: "Sunucuya ulaşılamadı" }));
+    setStatus((d.ok ? "✓ " : "") + esc(d.message), d.ok ? "ok" : "warn");
+  });
+  $("#setClear").addEventListener("click", () => { if (confirm("Kayıtlı API anahtarı silinsin mi?")) saveSettings({ gemini_api_key: "" }); });
 
   load().then(() => {
     const m = location.hash.match(/kitap=([0-9a-f]+)/);

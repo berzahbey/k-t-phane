@@ -36,6 +36,11 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
    değilse yalnızca o satırı değiştirin.
 3. **Install**. Arayüz: `http://SUNUCU-IP:5090`
 
+## Gemini anahtarı
+
+Uygulamada sağ üstteki **⚙ Ayarlar** düğmesinden girilir (`/data/settings.json` içinde saklanır, GitHub'a gitmez).
+İsterseniz compose'taki `GEMINI_API_KEY` ile de verilebilir; uygulamadan girilen anahtar önceliklidir.
+
 ## Ayarlar (ortam değişkenleri)
 
 | Değişken | Varsayılan | Açıklama |
