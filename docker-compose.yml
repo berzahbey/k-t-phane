@@ -1,21 +1,56 @@
-version: "3.8"
-
+# ZimaOS / CasaOS: App Store > "+" > "Install a customized app" > "Import" ile bu dosyayı yükleyin.
+# Kitap klasörünüz farklıysa yalnızca "/media/ZimaOS-HD/Kitap" kısmını değiştirin.
+name: k-tphane
 services:
   k-tphane:
-    build: .
+    image: ghcr.io/berzahbey/k-t-phane:latest
     container_name: k-tphane
-    network_mode: bridge
+    restart: unless-stopped
     ports:
       - "5090:5000"
-    restart: unless-stopped
+    environment:
+      TZ: Europe/Amsterdam
+      SCAN_INTERVAL: "1800"     # saniye; yeni kitaplar için otomatik tarama aralığı (0 = kapalı)
+      APP_PASSWORD: ""          # doluysa tarayıcı şifre sorar (dışarı açacaksanız mutlaka doldurun)
+      APP_USER: ""
     volumes:
-      - /media/ZimaOS-HD/Kitap:/books
+      - /media/ZimaOS-HD/Kitap:/books:ro            # :ro = uygulama kitaplarınıza asla yazamaz
+      - /DATA/AppData/k-tphane/data:/data           # önbellek ve kapak resimleri (otomatik oluşur)
+    x-casaos:
+      envs:
+        - container: SCAN_INTERVAL
+          description:
+            en_us: Automatic rescan interval in seconds (0 = off)
+        - container: APP_PASSWORD
+          description:
+            en_us: Optional password (HTTP basic auth)
+      ports:
+        - container: "5000"
+          description:
+            en_us: Web UI
+      volumes:
+        - container: /books
+          description:
+            en_us: Book folder (read-only)
+        - container: /data
+          description:
+            en_us: Cache and covers
 
 x-casaos:
-  hostname: ""
-  index: "/"
-  main: "k-tphane"
+  architectures:
+    - amd64
+  main: k-tphane
+  author: berzahbey
+  developer: berzahbey
+  category: Utilities
+  icon: https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/calibre-web.png
+  index: /
   port_map: "5090"
-  scheme: "http"
+  scheme: http
   title:
-    custom: "Kitaplar"
+    en_us: K-Tphane
+    custom: Kitaplar
+  tagline:
+    en_us: Personal book library
+  description:
+    en_us: Browse, search and read your PDF/EPUB library.

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>K-Tphane</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ version }}">
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn only-mobile" id="btnFilters" aria-label="Filtreler">
+    <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+  </button>
+  <a class="brand" href="/"><span class="brand-mark">K</span><span class="brand-name">K-Tphane</span></a>
+  <div class="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Başlık, yazar, konu ara…  ( / )" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="top-actions">
+    <select id="sort" aria-label="Sıralama">
+      <option value="title">Başlık (A-Z)</option>
+      <option value="author">Yazar (A-Z)</option>
+      <option value="added">Son eklenen</option>
+      <option value="category">Kategori</option>
+    </select>
+    <div class="seg" role="group" aria-label="Görünüm">
+      <button data-view="grid" class="active" aria-label="Kart görünümü"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button>
+      <button data-view="list" aria-label="Liste görünümü"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    </div>
+    <button class="btn" id="btnRescan" title="Klasörü yeniden tara (yeni eklenen kitaplar)">
+      <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg><span class="hide-sm">Tara</span>
+    </button>
+  </div>
+  <div class="progress" id="progress" hidden><div class="bar" id="progressBar"></div></div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head only-mobile">
+      <strong>Filtreler</strong>
+      <button class="icon-btn" id="btnCloseFilters" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <nav id="catNav" class="cat-nav"></nav>
+    <section class="facet"><h3>Dil</h3><div id="langFacet" class="chips"></div></section>
+    <section class="facet"><h3>Format</h3><div id="fmtFacet" class="chips"></div></section>
+    <section class="facet"><h3>Durum</h3><div id="stateFacet" class="chips"></div></section>
+    <p class="sidebar-foot" id="scanInfo"></p>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main class="main">
+    <div class="result-head">
+      <div>
+        <h1 id="resultTitle">Tüm kitaplar</h1>
+        <p id="resultCount" class="muted"></p>
+      </div>
+      <div id="activeChips" class="chips"></div>
+    </div>
+    <div id="notice" class="notice" hidden></div>
+    <div id="books" class="books grid"></div>
+    <div id="sentinel"></div>
+    <div id="empty" class="empty" hidden></div>
+  </main>
+</div>
+
+<dialog id="detail" class="detail">
+  <form method="dialog"><button class="icon-btn close" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  <div id="detailBody"></div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ version }}"></script>
+</body>
+</html>
