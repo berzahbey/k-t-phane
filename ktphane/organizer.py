@@ -72,6 +72,8 @@ def plan(lib):
     """[{id, from, to, book, override}] — yalnızca yeri değişecek dosyalar."""
     moves = []
     for b in lib.books():
+        if b.get("pending"):
+            continue
         for f in b["formats"]:
             dst = target_for(b, f)
             if not _same_place(dst, f["path"]):
@@ -209,8 +211,8 @@ def run_in_background(lib, fn, **kw):
             return
         try:
             lib.org_status["running"] = True
-            fn(lib, **kw)
-            lib._scan_locked()
+            if fn(lib, **kw):
+                lib._scan_locked()
         except Exception as e:
             log.exception("Düzenleme hatası")
             lib.org_status["last"] = {"time": int(time.time()), "moved": 0, "errors": [str(e)]}

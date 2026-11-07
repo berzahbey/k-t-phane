@@ -7,6 +7,12 @@ ENV PYTHONUNBUFFERED=1 \
     DATA_DIR=/data \
     PORT=5000
 
+# OCR: taranmış PDF'lerin ilk sayfalarını okuyup dil/konu tespiti için (Türkçe, Arapça, Farsça, İngilizce)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-tur tesseract-ocr-ara \
+      tesseract-ocr-fas tesseract-ocr-eng \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt

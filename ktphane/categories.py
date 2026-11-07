@@ -190,3 +190,39 @@ def category_tree():
         if sub not in tree[main]:
             tree[main].append(sub)
     return tree
+
+
+def classify_text(text, toc=()):
+    """İçerik metnindeki anahtar kelime SIKLIĞINA göre puanlar.
+    (ana, alt, puan, oran) döndürür; oran = en iyi puanın toplam içindeki payı."""
+    from collections import Counter
+    tokens = words(" ".join(toc) + " " + " ".join(toc) + " " + (text or ""))
+    if len(tokens) < 40:
+        return ("Diğer", "Sınıflandırılmamış", 0, 0.0)
+    counts = Counter(tokens)
+    vocab = list(counts)
+    seq = tokens
+    results = []
+    for main, sub, kws, authors in _COMPILED:
+        score = 0
+        for toks, prefix in kws:
+            if len(toks) == 1:
+                kt = toks[0]
+                if prefix:
+                    n = sum(c for w, c in counts.items() if w.startswith(kt)) if len(kt) >= 4 else counts.get(kt, 0)
+                else:
+                    n = counts.get(kt, 0)
+            else:
+                n = sum(1 for i in range(len(seq) - len(toks) + 1) if _match(seq[i:i + len(toks)], toks, prefix))
+            score += min(n, 8)
+        for a in authors:
+            if len(a) == 1:
+                score += min(counts.get(a[0], 0), 4) * 2
+            elif _match(seq, a, False):
+                score += 4
+        results.append((score, main, sub))
+    total = sum(r[0] for r in results) or 1
+    best = max(results)
+    if best[0] < 4:
+        return ("Diğer", "Sınıflandırılmamış", best[0], 0.0)
+    return (best[1], best[2], best[0], round(best[0] / total, 2))

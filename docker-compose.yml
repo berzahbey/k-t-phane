@@ -13,6 +13,13 @@ services:
       SCAN_INTERVAL: "1800"     # saniye; yeni kitaplar için otomatik tarama aralığı (0 = kapalı)
       APP_PASSWORD: ""          # doluysa tarayıcı şifre sorar (dışarı açacaksanız mutlaka doldurun)
       APP_USER: ""
+      # Yapay zeka (isteğe bağlı, ÜCRETSİZ katman): https://aistudio.google.com/apikey adresinden
+      # faturalandırması KAPALI bir projeyle anahtar alın. Boş bırakılırsa kurallar + içerik analizi kullanılır.
+      GEMINI_API_KEY: ""
+      GEMINI_MODEL: "gemini-flash-lite-latest"
+      GEMINI_DAILY_LIMIT: "500"   # günde en fazla bu kadar istek (ücretsiz kotanın altında kalır)
+      GEMINI_RPM: "8"             # dakikada en fazla istek
+      OCR_LANGS: "tur+ara+fas+eng"
     volumes:
       - /media/ZimaOS-HD/Kitap:/books               # "Düzenle" özelliği kitapları taşıyabilsin diye yazılabilir
       - /DATA/AppData/k-tphane/data:/data           # önbellek ve kapak resimleri (otomatik oluşur)
@@ -21,6 +28,9 @@ services:
         - container: SCAN_INTERVAL
           description:
             en_us: Automatic rescan interval in seconds (0 = off)
+        - container: GEMINI_API_KEY
+          description:
+            en_us: Optional free Gemini API key (AI Studio, billing disabled)
         - container: APP_PASSWORD
           description:
             en_us: Optional password (HTTP basic auth)

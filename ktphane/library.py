@@ -320,8 +320,9 @@ class Library:
                                    "formats": [], "subjects": [], "folders": f["folders"],
                                    "description": "", "year": "", "publisher": "",
                                    "added": 0, "lang_code": ""}
-            g["formats"].append({k: f[k] for k in ("id", "ext", "size", "pages", "needs_ocr",
-                                                   "broken", "path", "name")})
+            fmt = {k: f[k] for k in ("id", "ext", "size", "pages", "needs_ocr", "broken", "path", "name")}
+            fmt["ckey"] = _ckey(f)
+            g["formats"].append(fmt)
             g["subjects"] = g["subjects"] or f.get("subjects", [])
             g["description"] = g["description"] or f.get("description", "")
             g["year"] = g["year"] or f.get("year", "")
@@ -348,18 +349,65 @@ class Library:
                     o = folder_override(folders)
                 for k, v in o.items():
                     override.setdefault(k, v)
-            main, sub, _ = classify(g["title"], g["author"], g["subjects"], user_folders)
-            if override.get("cat") and override["cat"] != main:
-                main, sub = override["cat"], "Genel"
-            g["category"], g["subcategory"] = main, sub
-            g["language"] = override.get("lang") or detect_language(
-                f"{g['title']} {g['author']}", g["lang_code"])
-            g["override"] = override
+            self._decide(g, override, user_folders)
             out.append(g)
         out.sort(key=lambda b: b["title"].casefold())
         with self._lock:
             self._books_cache = (ver, out)
         return out
+
+    AI_MIN_CONF = 0.55
+
+    def _decide(self, g, override, user_folders):
+        """Kategori ve dil kararı. Öncelik: kullanıcının klasörü > Gemini > içerik > ad/etiket."""
+        enr = getattr(self, "enricher", None)
+        analyses = [enr.get(x["ckey"]) for x in g["formats"]] if enr else []
+        analyses = [a for a in analyses if a]
+        ai = next((a["ai"] for a in analyses if a.get("ai") and not a["ai"].get("failed")), None)
+        body = max(analyses, key=lambda a: a.get("chars", 0), default=None)
+
+        main, sub, rscore = classify(g["title"], g["author"], g["subjects"], user_folders)
+        why = {"source": "rules", "conf": min(1.0, rscore / 9),
+               "text": "Dosya adı, etiket ve klasör adlarından" if rscore else "Belirgin bir ipucu bulunamadı"}
+        kw = (body or {}).get("kw")
+        if kw and kw["score"] >= 6 and kw["ratio"] >= 0.3 and (kw["score"] / 3 >= rscore or main == "Diğer"):
+            main, sub = kw["cat"], kw["sub"]
+            why = {"source": "content", "conf": min(0.9, kw["ratio"]),
+                   "text": f"Kitabın içeriğindeki terimlerden (%{int(kw['ratio'] * 100)} {kw['cat']})"}
+        if ai and ai["conf"] >= self.AI_MIN_CONF and ai["cat"] != "Diğer":
+            main, sub = ai["cat"], ai["sub"]
+            why = {"source": "ai", "conf": ai["conf"], "text": ai.get("reason") or "Gemini"}
+        if override.get("cat"):
+            if override["cat"] != main:
+                main, sub = override["cat"], "Genel"
+            why = {"source": "folder", "conf": 1.0, "text": "Senin klasör seçimin"}
+        g["category"], g["subcategory"] = main, sub
+
+        lang = override.get("lang")
+        if not lang and ai and ai.get("lang") and ai["lang"] != "Diğer" and ai["conf"] >= self.AI_MIN_CONF:
+            lang = ai["lang"]
+        if not lang and body and body.get("lang") and body.get("lang_conf", 0) >= 0.45:
+            lang = body["lang"]
+        g["language"] = lang or detect_language(f"{g['title']} {g['author']}", g["lang_code"])
+
+        if ai:  # yapay zeka başlık/yazarı yalnızca eksik veya anlamsız olanı düzeltir
+            if not g["author"] and ai.get("author"):
+                g["author"] = ai["author"]
+            if _looks_junk(g["title"]) and ai.get("title"):
+                g["title"] = ai["title"]
+        g["override"] = override
+        g["why"] = why
+        g["ocr_text"] = any(a.get("ocr") for a in analyses)
+        # Düzenleyici, analizi bitmemiş kitabı taşımaz (iki kez taşınmasın)
+        pending = False
+        if enr:
+            readable = [x for x in g["formats"] if not x["broken"] and x["ext"] in ("epub", "pdf", "txt")]
+            if any(not enr.get(x["ckey"]) for x in readable):
+                pending = True
+            elif readable and not override.get("cat") and not ai and enr.ai.available():
+                tried = any((a.get("ai") or {}).get("failed") for a in analyses)
+                pending = not tried
+        g["pending"] = pending
 
     def get_file(self, fid):
         with self._lock:

@@ -29,7 +29,10 @@ def create_app():
         data_dir=os.environ.get("DATA_DIR", "/data"),
         scan_interval=int(os.environ.get("SCAN_INTERVAL", "1800")),
     )
+    from .enricher import Enricher
+    lib.enricher = Enricher(lib)
     lib.start_background()
+    lib.enricher.start()
     app.extensions["library"] = lib
 
     user = os.environ.get("APP_USER", "")
@@ -56,11 +59,16 @@ def create_app():
     @app.get("/api/books")
     def api_books():
         return jsonify(books=lib.books(), status=lib.status, tree=category_tree(),
-                       version=__version__)
+                       version=__version__, analysis=_analysis_status())
 
     @app.get("/api/status")
     def api_status():
-        return jsonify(status=lib.status, count=len(lib.files), organize=lib.org_status)
+        return jsonify(status=lib.status, count=len(lib.files), organize=lib.org_status,
+                       analysis=_analysis_status())
+
+    def _analysis_status():
+        e = lib.enricher
+        return {**e.status, "ai": e.ai.status(), "analysed": len(e.data)}
 
     @app.post("/api/rescan")
     def api_rescan():
@@ -79,6 +87,7 @@ def create_app():
         if with_plan:
             moves = organizer.plan(lib)
             out["count"] = len(moves)
+            out["pending_books"] = sum(1 for b in lib.books() if b.get("pending"))
             out["moves"] = [{"from": m["from"], "to": m["to"]} for m in moves[:500]]
             tree = {}
             for m in moves:

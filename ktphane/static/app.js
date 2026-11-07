@@ -36,7 +36,7 @@
       const r = await fetch("/api/books", { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
       const d = await r.json();
-      state.status = d.status; state.tree = d.tree;
+      state.status = d.status; state.tree = d.tree; state.analysis = d.analysis;
       state.books = d.books.map((b) => ({
         ...b,
         _s: fold([b.title, b.author, b.subcategory, b.category, (b.subjects || []).join(" "), (b.folders || []).join(" "), b.publisher, b.formats.map((f) => f.name).join(" ")].join(" ")),
@@ -59,20 +59,35 @@
     } else {
       p.hidden = true; btn.classList.remove("spin");
       clearInterval(pollTimer); pollTimer = null;
-      $("#scanInfo").textContent = s.last_scan ? "Son tarama: " + new Date(s.last_scan * 1000).toLocaleString("tr") : "";
+      if (state.analysis && (state.analysis.pending || (state.analysis.running))) pollTimer = setInterval(poll, 8000);
+      $("#scanInfo").innerHTML = (s.last_scan ? "Son tarama: " + new Date(s.last_scan * 1000).toLocaleString("tr") : "") + analysisLine();
     }
     if (s.error) showNotice(s.error); else if (!state.noticeSticky) $("#notice").hidden = true;
+  }
+  function analysisLine() {
+    const a = state.analysis; if (!a) return "";
+    let h = "";
+    if (a.pending) h += `<br>İçerik okunuyor: ${a.pending.toLocaleString("tr")} dosya kaldı`;
+    if (a.ai && a.ai.enabled) {
+      h += `<br>Gemini: bugün ${a.ai.today}/${a.ai.daily_limit}`;
+      if (a.ai_pending) h += ` · ${a.ai_pending.toLocaleString("tr")} kitap sırada`;
+      if (a.ai.paused_until) h += `<br><span style="color:var(--warn)">${esc(a.ai.error || "Duraklatıldı")} — ${new Date(a.ai.paused_until * 1000).toLocaleString("tr")} devam</span>`;
+      else if (a.ai.error) h += `<br><span style="color:var(--warn)">${esc(a.ai.error)}</span>`;
+    } else if (a.ai) h += `<br><span title="docker-compose içinde GEMINI_API_KEY tanımlayın">Yapay zeka kapalı (anahtar yok)</span>`;
+    return h;
   }
   let lastCount = -1;
   async function poll() {
     try {
       const d = await (await fetch("/api/status", { cache: "no-store" })).json();
       const wasScanning = state.status.scanning;
-      state.status = d.status;
+      state.status = d.status; state.analysis = d.analysis;
       updateStatus(d.status);
       // tarama sırasında yeni kitaplar kademeli görünsün
+      const done = d.analysis ? d.analysis.done : 0;
       if (d.count !== lastCount && (d.count - lastCount >= 50 || !d.status.scanning)) { lastCount = d.count; load(); }
       else if (wasScanning && !d.status.scanning) load();
+      else if (done - (state.lastDone || 0) >= 10 || (!d.analysis.running && state.lastDone !== done)) { state.lastDone = done; load(); }
     } catch {}
   }
   function showNotice(msg) { const n = $("#notice"); n.textContent = msg; n.hidden = false; }
@@ -209,8 +224,12 @@
     const b = state.books.find((x) => x.id === id);
     if (!b) return;
     const dir = isRtl(b.title) ? ' dir="rtl"' : "";
+    const src = { ai: "Yapay zeka (Gemini)", content: "Kitabın içeriği", folder: "Senin klasörün", rules: "Dosya adı / etiketler" }[b.why?.source] || "";
+    const whyTxt = b.pending ? "İçerik analizi sürüyor…" : b.why?.source === "rules" ? esc(b.why.text) :
+      `${src}${b.why?.source === "ai" ? ` · %${Math.round(b.why.conf * 100)} emin` : ""}${b.why?.source === "folder" ? "" : ` — ${esc(b.why?.text || "")}`}`;
     const meta = [
       ["Kategori", `${esc(b.category)} › ${esc(b.subcategory)}`],
+      ["Neden", whyTxt],
       ["Dil", esc(b.language)],
       b.year && ["Yıl", esc(b.year)],
       b.publisher && ["Yayınevi", esc(b.publisher)],
@@ -303,8 +322,9 @@
         (l.errors && l.errors.length ? `<br><small>${l.errors.length} dosya taşınamadı: ${esc(l.errors.slice(0, 3).join(" · "))}</small>` : "") + `</div>`;
     }
     if (!st.running && !d.scanning) {
+      if (d.pending_books) h += `<div class="org-card">${d.pending_books.toLocaleString("tr")} kitabın içeriği henüz inceleniyor; analiz bitince ${d.auto ? "otomatik" : "burada"} yerleştirilecek.</div>`;
       if (!d.count) {
-        h += `<div class="org-card ok">Bütün kitaplar doğru klasörde. ✓</div>`;
+        h += `<div class="org-card ok">${d.pending_books ? "İncelenmiş" : "Bütün"} kitaplar doğru klasörde. ✓</div>`;
       } else {
         h += `<div class="org-card"><b>${d.count.toLocaleString("tr")} dosya</b> yeni yerine taşınacak:<div class="org-summary">` +
           d.summary.slice(0, 24).map(([k, n]) => `<span class="chip">${esc(k)}<span class="n">${n}</span></span>`).join("") + `</div>` +

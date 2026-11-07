@@ -10,6 +10,13 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   düğmesi (Shift+tık = tam yeniden tarama).
 - **Dosyanın içinden bilgi**: EPUB başlık/yazar/dil/konu/açıklama/kapak; PDF sayfa sayısı ve
   “metin tabanlı / OCR gerekli” tespiti; PDF ilk sayfasından kapak.
+- **İçerik analizi**: Kitabın içinden metin okunur (EPUB bölümleri ve içindekiler, PDF'in ilk sayfaları,
+  taranmış PDF'lerde ilk 3 sayfaya OCR). Dil gerçek metinden, konu metindeki terimlerin sıklığından bulunur.
+- **Yapay zeka (isteğe bağlı, ücretsiz)**: `GEMINI_API_KEY` verilirse Gemini'nin ücretsiz katmanı içerik
+  örneğine bakarak kategori, dil, başlık ve yazarı belirler. Günlük üst sınır (`GEMINI_DAILY_LIMIT`) ve dakikalık
+  hız sınırı vardır; kota dolunca ertesi gün kaldığı yerden devam eder. Anahtar yoksa her şey yerel çalışır.
+  Karar önceliği: senin klasörün > Gemini > kitabın içeriği > dosya adı/etiketler. Detay penceresinde
+  “Neden” satırı kararın kaynağını gösterir.
 - **Kategori tespiti**: Türkçe karakter uyumlu, tam kelime eşleştirme (artık “Dinamik” → Din olmuyor),
   klasör adları, yazar adları ve Arapça başlıklar dikkate alınır.
 - **Arayüz**: anlık arama, kategori ağacı, dil/format/durum filtreleri, kart ve liste görünümü,
@@ -36,6 +43,11 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
 | `SCAN_INTERVAL` | `1800` | Otomatik tarama aralığı (saniye). `0` = kapalı |
 | `APP_PASSWORD` | boş | Doluysa tarayıcı şifre sorar. Uygulamayı internete açacaksanız mutlaka doldurun |
 | `APP_USER` | boş | Şifreyle birlikte istenen kullanıcı adı (boşsa herhangi bir ad kabul edilir) |
+| `GEMINI_API_KEY` | boş | Ücretsiz Gemini anahtarı ([AI Studio](https://aistudio.google.com/apikey), faturalandırması kapalı proje) |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` | Kullanılacak model |
+| `GEMINI_DAILY_LIMIT` | `500` | Günde en fazla istek |
+| `GEMINI_RPM` | `8` | Dakikada en fazla istek |
+| `OCR_LANGS` | `tur+ara+eng` | Taranmış PDF'ler için OCR dilleri |
 | `BOOK_DIR` | `/books` | Container içindeki kitap klasörü |
 | `DATA_DIR` | `/data` | Önbellek ve kapak resimleri |
 
