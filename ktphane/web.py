@@ -48,7 +48,7 @@ def create_app():
         if a and hmac.compare_digest(a.username or "", user or (a.username or "")) \
                 and hmac.compare_digest(a.password or "", password):
             return None
-        return Response("Giriş gerekli", 401, {"WWW-Authenticate": 'Basic realm="K-Tphane"'})
+        return Response("Giriş gerekli", 401, {"WWW-Authenticate": 'Basic realm="Kitaplik"'})
 
     @app.get("/health")
     def health():

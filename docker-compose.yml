@@ -58,8 +58,8 @@ x-casaos:
   port_map: "5090"
   scheme: http
   title:
-    en_us: K-Tphane
-    custom: Kitaplar
+    en_us: Kitaplık
+    custom: Kitaplık
   tagline:
     en_us: Personal book library
   description:

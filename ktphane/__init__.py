@@ -1,3 +1,3 @@
-"""K-Tphane — ev sunucusu için kişisel kitap arşivi."""
+"""Kitaplık — ev sunucusu için kişisel kitap arşivi."""
 
-__version__ = "2.4.0"
+__version__ = "2.4.1"

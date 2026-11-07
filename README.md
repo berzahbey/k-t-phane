@@ -1,4 +1,4 @@
-# K-Tphane
+# Kitaplık
 
 Ev sunucusu (ZimaOS / CasaOS / Docker) için kişisel kitap arşivi. PDF, EPUB ve diğer e-kitap
 dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda okuma sağlar.

@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>K-Tphane</title>
+  <meta name="apple-mobile-web-app-title" content="Kitaplık">
+  <meta name="application-name" content="Kitaplık">
+  <title>Kitaplık</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ version }}">
 </head>
@@ -13,7 +15,7 @@
   <button class="icon-btn only-mobile" id="btnFilters" aria-label="Filtreler">
     <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
   </button>
-  <a class="brand" href="/"><span class="brand-mark">K</span><span class="brand-name">K-Tphane</span></a>
+  <a class="brand" href="/"><span class="brand-mark">K</span><span class="brand-name">Kitaplık</span></a>
   <div class="search">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input id="q" type="search" placeholder="Başlık, yazar, konu ara…  ( / )" autocomplete="off" spellcheck="false">
