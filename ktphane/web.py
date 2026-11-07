@@ -9,6 +9,7 @@ from flask import Flask, Response, abort, jsonify, render_template, request, sen
 from . import __version__
 from .categories import category_tree
 from .library import Library
+from . import organizer
 
 MIME = {"epub": "application/epub+zip", "pdf": "application/pdf", "mobi": "application/x-mobipocket-ebook",
         "azw3": "application/vnd.amazon.ebook", "azw": "application/vnd.amazon.ebook",
@@ -59,13 +60,59 @@ def create_app():
 
     @app.get("/api/status")
     def api_status():
-        return jsonify(status=lib.status, count=len(lib.files))
+        return jsonify(status=lib.status, count=len(lib.files), organize=lib.org_status)
 
     @app.post("/api/rescan")
     def api_rescan():
         full = request.args.get("full") == "1"
         started = lib.trigger_scan(full=full)
         return jsonify(started=started, status=lib.status)
+
+    # ---------- klasör düzenleme ----------
+    def _org_state(with_plan=False):
+        out = {"writable": organizer.writable(lib), "auto": bool(lib.org.get("auto")),
+               "status": lib.org_status, "can_undo": bool(lib.org.get("journal")),
+               "scanning": lib.status.get("scanning")}
+        if lib.org.get("journal"):
+            last = lib.org["journal"][-1]
+            out["last_batch"] = {"time": last["time"], "count": len(last["moves"]), "auto": last.get("auto")}
+        if with_plan:
+            moves = organizer.plan(lib)
+            out["count"] = len(moves)
+            out["moves"] = [{"from": m["from"], "to": m["to"]} for m in moves[:500]]
+            tree = {}
+            for m in moves:
+                parts = m["to"].split(os.sep)
+                key = os.sep.join(parts[:2]) if len(parts) > 2 else parts[0]
+                tree[key] = tree.get(key, 0) + 1
+            out["summary"] = sorted(tree.items(), key=lambda kv: (-kv[1], kv[0]))
+        return out
+
+    @app.get("/api/organize")
+    def org_get():
+        return jsonify(_org_state(with_plan=True))
+
+    @app.post("/api/organize/apply")
+    def org_apply():
+        if not organizer.writable(lib):
+            return jsonify(error="Kitap klasörü salt okunur bağlanmış. Compose dosyasında "
+                                 "'/books:ro' yerine '/books' yazın."), 409
+        auto = (request.get_json(silent=True) or {}).get("auto", True)
+        lib.org["auto"] = bool(auto)
+        lib.save_org()
+        started = organizer.run_in_background(lib, organizer.apply_locked, auto=False)
+        return jsonify(started=started, **_org_state())
+
+    @app.post("/api/organize/undo")
+    def org_undo():
+        started = organizer.run_in_background(lib, organizer.undo_locked)
+        return jsonify(started=started, **_org_state())
+
+    @app.post("/api/organize/auto")
+    def org_auto():
+        lib.org["auto"] = bool((request.get_json(silent=True) or {}).get("on"))
+        lib.save_org()
+        return jsonify(_org_state())
 
     def _rec(fid):
         rec = lib.get_file(fid)

@@ -182,3 +182,29 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
   .hide-sm { display: none; }
 }
 @media (max-width: 480px) { .seg { display: none; } }
+
+/* ---------- klasör düzenleme ---------- */
+.btn { position: relative; }
+.btn .dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.org { overflow: auto; }
+.org .org-body { padding: 26px; }
+.org h2 { margin: 0 34px 6px 0; font-size: 20px; }
+.org p { margin: 0 0 12px; }
+.small { font-size: 12.5px; }
+.org-tree { margin: 0 0 12px; padding: 12px 14px; border-radius: 9px; background: var(--surface-2); font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: auto; }
+.org-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 12px; }
+.org-card.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+.org-card.ok { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+.org-summary { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.org-moves { max-height: 200px; overflow: auto; margin-top: 10px; border-top: 1px solid var(--border); }
+.org-moves div { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.org-moves span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-moves .from { color: var(--muted); } .org-moves .arrow { color: var(--muted); }
+.org-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; user-select: none; }
+.switch input { width: 34px; height: 20px; appearance: none; -webkit-appearance: none; border-radius: 99px; background: var(--border); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(14px); }
+.org-progress { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 10px; }
+.org-progress div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }

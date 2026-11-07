@@ -25,6 +25,12 @@ def _fid(rel):
     return hashlib.sha1(rel.encode("utf-8", "surrogateescape")).hexdigest()[:16]
 
 
+def _ckey(rec):
+    """Kapak anahtarı dosya içeriğine bağlı: dosya taşınsa da kapak yeniden üretilmez."""
+    raw = f"{rec['name']}|{rec['size']}|{rec['mtime']}"
+    return hashlib.sha1(raw.encode("utf-8", "surrogateescape")).hexdigest()[:16]
+
+
 def parse_filename(filename):
     """'Yazar - Başlık.pdf' -> (başlık, yazar). Yalnızca boşluklu tire ayraç sayılır;
     'Ibn-Sina' gibi isimler bölünmez."""
@@ -36,6 +42,35 @@ def parse_filename(filename):
     if len(parts) >= 2:
         return tr_title(" - ".join(parts[1:])), tr_title(parts[0])
     return tr_title(stem), ""
+
+
+LANG_LABELS = ["Türkçe", "Osmanlıca", "Osmanlıca / Farsça", "Arapça", "Farsça", "English",
+               "Nederlands", "Deutsch", "Français"]
+
+
+def folder_name(label):
+    """Klasör adına uygun hale getir ('Osmanlıca / Farsça' -> 'Osmanlıca - Farsça')."""
+    return re.sub(r"\s*/\s*", " - ", label).strip()
+
+
+_LANG_BY_FOLDER = {fold(folder_name(l)): l for l in LANG_LABELS}
+_LANG_BY_FOLDER.update({"turkish": "Türkçe", "arabic": "Arapça", "ingilizce": "English",
+                        "hollandaca": "Nederlands", "almanca": "Deutsch", "farsi": "Farsça",
+                        "ottoman": "Osmanlıca", "dutch": "Nederlands", "german": "Deutsch"})
+
+
+def folder_override(folders):
+    """Kullanıcının elle oluşturduğu 'Dil' ve 'Ana kategori' klasörlerini tanır."""
+    from .categories import category_tree
+    cats = {fold(c): c for c in category_tree()}
+    out = {}
+    for f in folders:
+        k = fold(f).strip()
+        if "lang" not in out and k in _LANG_BY_FOLDER:
+            out["lang"] = _LANG_BY_FOLDER[k]
+        elif "cat" not in out and k in cats:
+            out["cat"] = cats[k]
+    return out
 
 
 def _looks_junk(title):
@@ -73,7 +108,11 @@ class Library:
                        "error": None, "duration": None}
         self._version = 0
         self._books_cache = (None, None)
+        self.org_file = os.path.join(self.data_dir, "organizer.json")
+        self.org = {"auto": False, "placed": {}, "journal": []}
+        self.org_status = {"running": False, "last": None}
         self._load_cache()
+        self._load_org()
 
     # ---------- kalıcılık ----------
     @staticmethod
@@ -103,6 +142,23 @@ class Library:
             pass
         except Exception as e:
             log.warning("Önbellek okunamadı: %s", e)
+
+    def _load_org(self):
+        try:
+            with open(self.org_file, encoding="utf-8") as f:
+                self.org.update(json.load(f))
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.warning("organizer.json okunamadı: %s", e)
+
+    def save_org(self):
+        tmp = self.org_file + ".tmp"
+        with self._lock:
+            payload = json.dumps(self.org, ensure_ascii=False)
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp, self.org_file)
 
     def _save_cache(self):
         tmp = self.cache_file + ".tmp"
@@ -141,6 +197,18 @@ class Library:
     def scan(self, full=False):
         if not self._scan_lock.acquire(blocking=False):
             return
+        try:
+            self._scan_locked(full=full)
+            if self.org.get("auto") and not self.status.get("error"):
+                from . import organizer
+                if organizer.writable(self):
+                    moved = organizer.apply_locked(self, auto=True)
+                    if moved:
+                        self._scan_locked()
+        finally:
+            self._scan_lock.release()
+
+    def _scan_locked(self, full=False):
         t0 = time.time()
         try:
             if not os.path.isdir(self.book_dir):
@@ -151,6 +219,8 @@ class Library:
             found = list(self._walk())
             self.status.update(scanning=True, done=0, total=len(found), error=None)
             old = {} if full else dict(self.files)
+            # taşınmış dosyalar yeniden okunmasın: ad+boyut+tarih eşleşmesi
+            by_content = {(r["name"], r["size"], r["mtime"]): r for r in old.values()}
             new = {}
             dirty = 0
             for i, (full_path, ext) in enumerate(found, 1):
@@ -161,10 +231,13 @@ class Library:
                 except OSError:
                     continue
                 prev = old.get(fid)
+                moved = by_content.get((os.path.basename(rel), st.st_size, int(st.st_mtime)))
                 if prev and prev.get("mtime") == int(st.st_mtime) and prev.get("size") == st.st_size:
                     new[fid] = prev
+                elif moved:
+                    new[fid] = {**moved, "id": fid, "path": rel,
+                                "folders": [p for p in os.path.dirname(rel).split(os.sep) if p]}
                 else:
-                    self._drop_cover(fid)
                     new[fid] = self._analyse(fid, rel, full_path, ext, st)
                     dirty += 1
                     if dirty % 50 == 0:  # büyük arşivde kademeli görünür olsun
@@ -176,8 +249,20 @@ class Library:
                 removed = set(self.files) - set(new)
                 self.files = new
                 self._version += 1
+            alive = {_ckey(r) for r in new.values()}
             for fid in removed:
-                self._drop_cover(fid)
+                old_rec = old.get(fid) or {}
+                if old_rec and _ckey(old_rec) not in alive:
+                    self._drop_cover(_ckey(old_rec))
+            # artık var olmayan yerleşim kayıtlarını temizle (elle taşınan dosyalar)
+            paths = {r["path"] for r in new.values()}
+            placed = self.org.get("placed", {})
+            if any(p not in paths for p in placed):
+                self.org["placed"] = {p: v for p, v in placed.items() if p in paths}
+                try:
+                    self.save_org()
+                except OSError:
+                    pass
             self.status["last_scan"] = int(time.time())
             self._save_cache()
             log.info("Tarama bitti: %d dosya, %d yeni/değişmiş, %d silinmiş, %.1fs",
@@ -188,7 +273,6 @@ class Library:
         finally:
             self.status["scanning"] = False
             self.status["duration"] = round(time.time() - t0, 1)
-            self._scan_lock.release()
 
     def _analyse(self, fid, rel, full_path, ext, st):
         name = os.path.basename(rel)
@@ -245,15 +329,32 @@ class Library:
             g["lang_code"] = g["lang_code"] or f.get("lang_code", "")
             g["added"] = max(g["added"], f["mtime"])
         order = {"epub": 0, "pdf": 1}
+        placed = self.org.get("placed", {})
         out = []
         for g in groups.values():
             g["formats"].sort(key=lambda x: (order.get(x["ext"], 9), x["broken"]))
             # kapak için EPUB'u, yoksa ilk PDF'i tercih et
             g["cover_id"] = next((x["id"] for x in g["formats"]
                                   if x["ext"] in ("epub", "pdf") and not x["broken"]), None)
-            main, sub, _ = classify(g["title"], g["author"], g["subjects"], g["folders"])
+            # Elle konulmuş klasör (Türkçe/Din gibi) her zaman kazanır. Düzenleyicinin kendi
+            # oluşturduğu klasörler ise sınıflandırmayı etkilemez (kendini besleme olmasın).
+            override, user_folders = {}, []
+            for x in g["formats"]:
+                if x["path"] in placed:
+                    o = placed[x["path"]] or {}
+                else:
+                    folders = [p for p in os.path.dirname(x["path"]).split(os.sep) if p]
+                    user_folders += folders
+                    o = folder_override(folders)
+                for k, v in o.items():
+                    override.setdefault(k, v)
+            main, sub, _ = classify(g["title"], g["author"], g["subjects"], user_folders)
+            if override.get("cat") and override["cat"] != main:
+                main, sub = override["cat"], "Genel"
             g["category"], g["subcategory"] = main, sub
-            g["language"] = detect_language(f"{g['title']} {g['author']}", g["lang_code"])
+            g["language"] = override.get("lang") or detect_language(
+                f"{g['title']} {g['author']}", g["lang_code"])
+            g["override"] = override
             out.append(g)
         out.sort(key=lambda b: b["title"].casefold())
         with self._lock:
@@ -268,23 +369,23 @@ class Library:
         # Yalnızca taramada bulunmuş (kayıtlı) dosyalar sunulur; URL'den yol alınmaz.
         return os.path.join(self.book_dir, rec["path"])
 
-    def _drop_cover(self, fid):
+    def _drop_cover(self, key):
         for suffix in (".jpg", ".jpg.none"):
             try:
-                os.remove(os.path.join(self.cover_dir, fid + suffix))
+                os.remove(os.path.join(self.cover_dir, key + suffix))
             except OSError:
                 pass
 
     def cover_path(self, fid):
         """Kapağı ilk istendiğinde üretir ve diske kaydeder."""
-        dest = os.path.join(self.cover_dir, fid + ".jpg")
+        rec = self.get_file(fid)
+        if not rec:
+            return None
+        dest = os.path.join(self.cover_dir, _ckey(rec) + ".jpg")
         miss = dest + ".none"
         if os.path.exists(dest):
             return dest
         if os.path.exists(miss):
-            return None
-        rec = self.get_file(fid)
-        if not rec:
             return None
         tmp = f"{dest}.{threading.get_ident()}.tmp"
         ok = metadata.make_cover(rec["ext"], self.abs_path(rec), rec.get("cover_member"), tmp)

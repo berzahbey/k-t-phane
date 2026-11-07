@@ -14,7 +14,7 @@ services:
       APP_PASSWORD: ""          # doluysa tarayıcı şifre sorar (dışarı açacaksanız mutlaka doldurun)
       APP_USER: ""
     volumes:
-      - /media/ZimaOS-HD/Kitap:/books:ro            # :ro = uygulama kitaplarınıza asla yazamaz
+      - /media/ZimaOS-HD/Kitap:/books               # "Düzenle" özelliği kitapları taşıyabilsin diye yazılabilir
       - /DATA/AppData/k-tphane/data:/data           # önbellek ve kapak resimleri (otomatik oluşur)
     x-casaos:
       envs:

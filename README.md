@@ -16,6 +16,10 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   sıralama, kitap detay penceresi, mobil uyum, açık/koyu tema.
 - **EPUB okuyucu**: içindekiler, sayfa çevirme (ok tuşları / kaydırma), yazı boyutu, açık-sepya-koyu tema,
   kaldığı yeri hatırlama. PDF'ler tarayıcının kendi görüntüleyicisinde açılır.
+- **Klasör düzenleme**: Kitapları `Dil / Konu / EPUB` ve `Dil / Konu / PDF / Metin|OCR` yapısına taşır.
+  Önce önizleme gösterir; onaydan sonra yeni eklenen kitaplar da otomatik düzenlenir. Dosya silinmez,
+  her taşıma kaydedilir ve “Son düzenlemeyi geri al” ile geri döndürülebilir. Bir kitabı elle başka bir
+  dil/konu klasörüne koyarsanız uygulama sizin seçiminizi esas alır.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)

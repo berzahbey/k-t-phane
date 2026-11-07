@@ -29,6 +29,9 @@
       <button data-view="grid" class="active" aria-label="Kart görünümü"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></button>
       <button data-view="list" aria-label="Liste görünümü"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
     </div>
+    <button class="btn" id="btnOrganize" title="Klasörleri Dil / Konu / Format yapısına göre düzenle">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 13h8M12 9v8"/></svg><span class="hide-sm">Düzenle</span><span class="dot" id="orgDot" hidden></span>
+    </button>
     <button class="btn" id="btnRescan" title="Klasörü yeniden tara (yeni eklenen kitaplar)">
       <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg><span class="hide-sm">Tara</span>
     </button>
@@ -68,6 +71,25 @@
 <dialog id="detail" class="detail">
   <form method="dialog"><button class="icon-btn close" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
   <div id="detailBody"></div>
+</dialog>
+
+<dialog id="organize" class="detail org">
+  <form method="dialog"><button class="icon-btn close" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  <div class="org-body">
+    <h2>Klasörleri düzenle</h2>
+    <p class="muted">Kitaplar kitap klasörünün içinde şu yapıya taşınır. Hiçbir dosya silinmez; aynı adda dosya varsa “(2)” eklenir.</p>
+    <pre class="org-tree">Türkçe/
+  Din/
+    EPUB/
+    PDF/Metin/   ← metin tabanlı PDF
+    PDF/OCR/     ← taranmış PDF (OCR gerekli)
+    Diğer Formatlar/
+  Felsefe/ · Tarih/ · Sosyoloji/ · Edebiyat/ …
+English/ · Arapça/ · Osmanlıca/ …
+Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
+    <p class="muted small">İpucu: Bir kitabı elle başka bir dil veya konu klasörüne taşırsan (örn. <b>Arapça/Felsefe</b>), uygulama senin seçimini esas alır.</p>
+    <div id="orgContent"><div class="skeleton" style="aspect-ratio:auto;height:120px"></div></div>
+  </div>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>

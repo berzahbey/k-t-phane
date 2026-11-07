@@ -276,6 +276,82 @@
   });
   new IntersectionObserver((ents) => { if (ents[0].isIntersecting && state.shown < state.filtered.length) more(); }, { rootMargin: "800px" }).observe($("#sentinel"));
 
+  // ---------- klasör düzenleme ----------
+  const ARROW = `<svg viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M5 12h14m-5-5 5 5-5 5"/></svg>`;
+  let orgTimer = null;
+  async function orgFetch(url = "/api/organize", body) {
+    const r = await fetch(url, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.status);
+    return d;
+  }
+  function orgRender(d) {
+    const box = $("#orgContent"), st = d.status || {};
+    let h = "";
+    if (!d.writable) {
+      h += `<div class="org-card warn"><b>Kitap klasörü salt okunur bağlanmış.</b><br>Düzenleme için ZimaOS'ta uygulamanın ayarlarında kitap klasörü satırının sonundaki <code>:ro</code> kısmını silip kaydedin.</div>`;
+    }
+    if (st.running) {
+      const pct = st.total ? Math.round((100 * st.done) / st.total) : 5;
+      h += `<div class="org-card"><b>Dosyalar taşınıyor…</b> ${st.done || 0} / ${st.total || "?"}<div class="org-progress"><div style="width:${pct}%"></div></div></div>`;
+    } else if (d.scanning) {
+      h += `<div class="org-card">Kütüphane taranıyor. Tarama bitince ${d.auto ? "düzenleme otomatik yapılacak." : "önizleme hazır olacak."}</div>`;
+    }
+    if (st.last && !st.running) {
+      const l = st.last, when = new Date(l.time * 1000).toLocaleString("tr");
+      h += `<div class="org-card ${l.errors && l.errors.length ? "warn" : "ok"}">${l.undo ? "Geri alındı" : "Düzenlendi"}: <b>${l.moved}</b> dosya · ${when}` +
+        (l.errors && l.errors.length ? `<br><small>${l.errors.length} dosya taşınamadı: ${esc(l.errors.slice(0, 3).join(" · "))}</small>` : "") + `</div>`;
+    }
+    if (!st.running && !d.scanning) {
+      if (!d.count) {
+        h += `<div class="org-card ok">Bütün kitaplar doğru klasörde. ✓</div>`;
+      } else {
+        h += `<div class="org-card"><b>${d.count.toLocaleString("tr")} dosya</b> yeni yerine taşınacak:<div class="org-summary">` +
+          d.summary.slice(0, 24).map(([k, n]) => `<span class="chip">${esc(k)}<span class="n">${n}</span></span>`).join("") + `</div>` +
+          `<div class="org-moves">` + d.moves.slice(0, 300).map((m) => `<div><span class="from" title="${esc(m.from)}">${esc(m.from)}</span><span class="arrow">${ARROW}</span><span title="${esc(m.to)}">${esc(m.to)}</span></div>`).join("") +
+          (d.count > 300 ? `<div><span class="muted">… ve ${d.count - 300} dosya daha</span></div>` : "") + `</div></div>`;
+      }
+    }
+    h += `<div class="org-actions">`;
+    if (d.count && !st.running && !d.scanning) h += `<button class="btn primary" id="orgApply" ${d.writable ? "" : "disabled"}>${d.count.toLocaleString("tr")} dosyayı düzenle</button>`;
+    h += `<label class="switch"><input type="checkbox" id="orgAuto" ${d.auto || (d.count && !d.last_batch) ? "checked" : ""} ${d.writable ? "" : "disabled"}>Yeni kitapları otomatik düzenle</label>`;
+    if (d.can_undo && !st.running) h += `<button class="btn" id="orgUndo" style="margin-left:auto" title="Son düzenlemedeki dosyaları eski yerlerine taşır">Son düzenlemeyi geri al${d.last_batch ? ` (${d.last_batch.count})` : ""}</button>`;
+    h += `</div>`;
+    box.innerHTML = h;
+
+    $("#orgApply")?.addEventListener("click", async () => {
+      try {
+        const r = await orgFetch("/api/organize/apply", { auto: $("#orgAuto").checked });
+        toast(r.started ? "Düzenleme başladı" : "Tarama sürüyor; bitince düzenlenecek");
+        orgPoll();
+      } catch (e) { toast(e.message); }
+    });
+    $("#orgUndo")?.addEventListener("click", async () => {
+      if (!confirm("Son düzenlemede taşınan dosyalar eski yerlerine dönsün mü? Otomatik düzenleme kapatılacak.")) return;
+      try { await orgFetch("/api/organize/undo", {}); toast("Geri alınıyor…"); orgPoll(); } catch (e) { toast(e.message); }
+    });
+    $("#orgAuto")?.addEventListener("change", async (e) => {
+      // Önizleme bekleyen dosya varsa, anahtar 'Düzenle' ile birlikte gönderilir
+      if (d.count && !d.auto) return;
+      try { await orgFetch("/api/organize/auto", { on: e.target.checked }); toast(e.target.checked ? "Otomatik düzenleme açık" : "Otomatik düzenleme kapalı"); } catch (er) { toast(er.message); }
+    });
+    clearTimeout(orgTimer);
+    if (st.running || d.scanning) orgTimer = setTimeout(orgPoll, 1500);
+  }
+  let orgWasBusy = false;
+  async function orgPoll() {
+    try {
+      const d = await orgFetch();
+      const busy = d.status?.running || d.scanning;
+      if (orgWasBusy && !busy) load();
+      orgWasBusy = busy;
+      if ($("#organize").open) orgRender(d);
+      else if (busy) orgTimer = setTimeout(orgPoll, 2000);
+    } catch (e) { $("#orgContent").innerHTML = `<div class="org-card warn">${esc(e.message)}</div>`; }
+  }
+  $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
+  $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
   load().then(() => {
     const m = location.hash.match(/kitap=([0-9a-f]+)/);
     if (m) openDetail(m[1]);
