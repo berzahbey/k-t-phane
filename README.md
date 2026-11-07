@@ -30,6 +30,9 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
 - **Koleksiyonlar**: Aynı eserin ciltleri (“İhya 1…8”, “Mesnevi Cilt 2”, “Tarih Vol. II”) tek bir koleksiyon
   kartında toplanır; klasörde `<Dil>/<Konu>/Koleksiyonlar/<Eser adı>/` altında birlikte durur. Tüm ciltler
   aynı kategori ve dile konur.
+- **Silme**: Kitap detayında her formatın yanında *Sil*; birden fazla format veya koleksiyon için “tümüyle sil”.
+  İki aşamalı onay ister ve dosyayı sunucudan **kalıcı** olarak siler (çöp kutusu yok). Silinenlerin adı/yolu
+  `/data/silinenler-kaydi.json` dosyasına not edilir.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)

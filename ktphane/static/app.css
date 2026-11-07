@@ -241,3 +241,18 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .vol-open:hover .vol-t { text-decoration: underline; }
 .vol-btns { display: flex; gap: 6px; flex: none; }
 .btn.sm { height: 30px; padding: 0 9px; font-size: 12.5px; }
+
+/* ---------- silme ---------- */
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-soft); border-color: transparent; }
+.danger-link { color: var(--danger); margin-top: 12px; font-size: 12.5px; }
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-btn { background: transparent; border: 0; color: var(--accent-soft); font-weight: 700; text-decoration: underline; padding: 0; cursor: pointer; }
+.btn.danger-solid { background: var(--danger); color: #fff; border-color: transparent; }
+.btn.danger-solid:hover { filter: brightness(1.08); }
+.confirm { width: min(520px, calc(100vw - 32px)); }
+.confirm h2 { font-size: 18px; margin: 4px 0 10px; }
+.confirm-step { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--danger); }
+.cf-list { margin: 10px 0 0; padding: 10px 12px 10px 28px; background: var(--surface-2); border-radius: 8px; max-height: 180px; overflow: auto; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+.cf-list span { color: var(--muted); }
+.confirm .org-body { padding: 22px 24px; }

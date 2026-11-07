@@ -199,6 +199,11 @@ class Library:
             return
         try:
             self._scan_locked(full=full)
+            if getattr(self, "trash", None):
+                try:
+                    self.trash.auto_purge()
+                except Exception:
+                    log.exception("Çöp temizleme hatası")
             if self.org.get("auto") and not self.status.get("error"):
                 from . import organizer
                 if organizer.writable(self):

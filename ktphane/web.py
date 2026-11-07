@@ -31,6 +31,8 @@ def create_app():
     )
     from .enricher import Enricher
     lib.enricher = Enricher(lib)
+    from .trash import Trash
+    lib.trash = Trash(lib)
     lib.start_background()
     lib.enricher.start()
     app.extensions["library"] = lib
@@ -147,6 +149,21 @@ def create_app():
         if ok:
             lib.enricher.wake()
         return jsonify(ok=ok, message=msg, ai_status=lib.enricher.ai.status())
+
+    # ---------- silme (kalıcı, iki aşamalı onay) ----------
+    @app.post("/api/delete")
+    def api_delete():
+        from .trash import CONFIRM_TOKEN
+        if not organizer.writable(lib):
+            return jsonify(error="Kitap klasörü salt okunur; silmek için compose'ta ':ro' kaldırılmalı."), 409
+        d = request.get_json(silent=True) or {}
+        if d.get("confirm") != CONFIRM_TOKEN:
+            return jsonify(error="Silme onayı eksik"), 400
+        ids = [i for i in (d.get("ids") or []) if isinstance(i, str)][:500]
+        if not ids:
+            return jsonify(error="Silinecek dosya seçilmedi"), 400
+        done, errors = lib.trash.delete(ids, title=d.get("title") or "")
+        return jsonify(deleted=done, errors=errors)
 
     def _rec(fid):
         rec = lib.get_file(fid)

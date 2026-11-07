@@ -93,9 +93,13 @@
     } catch {}
   }
   function showNotice(msg) { const n = $("#notice"); n.textContent = msg; n.hidden = false; }
-  function toast(msg) {
+  function toast(msg, action) {
     const t = $("#toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600);
+    if (action) {
+      const b = document.createElement("button"); b.className = "toast-btn"; b.textContent = action.label;
+      b.onclick = () => { t.hidden = true; action.run(); }; t.appendChild(b);
+    }
+    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), action ? 9000 : 2600);
   }
 
   // ---------- filtreleme ----------
@@ -263,13 +267,14 @@
         return (readable ? `<a class="btn primary sm" href="${url}" target="_blank" rel="noopener">Oku ${f.ext.toUpperCase()}</a>` : "") +
           `<a class="btn sm" href="/download/${f.id}" title="İndir">↓</a>`;
       }).join("");
-      return `<div class="vol-row"><button class="vol-open" data-vol="${v.id}"><span class="vol-n">${v.volume ?? "–"}</span><span class="vol-t">${esc(v.title)}</span></button><div class="vol-btns">${btns}</div></div>`;
+      return `<div class="vol-row"><button class="vol-open" data-vol="${v.id}"><span class="vol-n">${v.volume ?? "–"}</span><span class="vol-t">${esc(v.title)}</span></button><div class="vol-btns">${btns}<button class="btn sm danger" data-del="${v.formats.map((f) => f.id).join(",")}" data-title="${esc(v.title)}" data-what="bu cildi" title="Cildi sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></div></div>`;
     }).join("");
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(c, false)}<div class="d-info">
       <h2>${esc(c.title)}</h2><div class="by">${esc(c.author || "Yazar bilinmiyor")} · ${volLabel(c)}</div>
       <dl class="d-meta"><dt>Kategori</dt><dd>${esc(c.category)} › ${esc(c.subcategory)}</dd><dt>Dil</dt><dd>${esc(c.language)}</dd>
       <dt>Klasör</dt><dd>${esc(c.language)} / ${esc(c.category)} / Koleksiyonlar / ${esc(c.title)}</dd></dl>
-      <div class="vols">${vols}</div></div></div>`;
+      <div class="vols">${vols}</div>
+      <button class="linkish danger-link" data-del="${c.formats.map((f) => f.id).join(",")}" data-title="${esc(c.title)}" data-what="koleksiyonun tamamını (${c.volumes.length} cilt)">Koleksiyonu tümüyle sil</button></div></div>`;
     const img = $("#detailBody img[data-src]");
     if (img) { img.addEventListener("load", () => img.classList.add("ok")); img.addEventListener("error", () => img.remove()); img.src = img.dataset.src; }
     $("#detailBody").querySelectorAll("[data-vol]").forEach((el) => el.addEventListener("click", () => openDetail(el.dataset.vol)));
@@ -300,13 +305,15 @@
       const extra = [fmtSize(f.size), f.pages ? f.pages + " sayfa" : "", f.error ? `<span style="color:var(--warn)">${esc(f.error)}</span>` : ""].filter(Boolean).join(" · ");
       return `<div class="fmt-row"><div class="info"><div class="badges">${badgesHtml({ formats: [f], language: b.language }).replace(/<span class="badge lang">.*$/, "")}</div><div class="fn" title="${esc(f.path)}">${esc(f.name)} · ${extra}</div></div>
         ${readable ? `<a class="btn primary" href="${readUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2zM22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>Oku</a>` : ""}
-        <a class="btn" href="/download/${f.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>İndir</a></div>`;
+        <a class="btn" href="/download/${f.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>İndir</a>
+        <button class="btn danger" data-del="${f.id}" data-title="${esc(b.title)}" data-what="${esc(f.ext.toUpperCase())}" title="Bu dosyayı sil"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Sil</button></div>`;
     }).join("");
     const ocrHint = b.formats.some((f) => f.ext === "pdf" && f.needs_ocr) ? `<p class="muted" style="font-size:12.5px">Bu PDF taranmış görüntüden oluşuyor; metin seçilemez ve aranamaz. İleride OCR ile metne çevrilebilir.</p>` : "";
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(b, false)}<div class="d-info">
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
       ${b.description ? `<p class="d-desc">${esc(b.description)}</p>` : ""}
-      <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div></div></div>`;
+      <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div>
+      ${b.formats.length > 1 ? `<button class="linkish danger-link" data-del="${b.formats.map((f) => f.id).join(",")}" data-title="${esc(b.title)}" data-what="tüm formatları (${b.formats.length} dosya)">Kitabı tümüyle sil</button>` : ""}</div></div>`;
     const img = $("#detailBody img[data-src]");
     if (img) { img.addEventListener("load", () => img.classList.add("ok")); img.addEventListener("error", () => img.remove()); img.src = img.dataset.src; }
     const dlg = $("#detail");
@@ -429,6 +436,45 @@
   }
   $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
   $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+  // ---------- silme (iki aşamalı onay, kalıcı) ----------
+  function ask({ step, title, body, ok }) {
+    return new Promise((resolve) => {
+      const dlg = $("#confirmDlg");
+      $("#cfStep").textContent = step; $("#cfTitle").textContent = title; $("#cfBody").innerHTML = body; $("#cfOk").textContent = ok;
+      const done = (v) => { dlg.close(); $("#cfOk").onclick = $("#cfCancel").onclick = null; resolve(v); };
+      $("#cfOk").onclick = () => done(true); $("#cfCancel").onclick = () => done(false);
+      dlg.oncancel = (e) => { e.preventDefault(); done(false); };
+      dlg.showModal(); $("#cfCancel").focus();
+    });
+  }
+  function filesFor(ids) {
+    const out = [];
+    for (const b of state.books) for (const f of b.formats) if (ids.includes(f.id)) out.push(f);
+    return out;
+  }
+  async function deleteFiles(ids, title, what) {
+    const files = filesFor(ids);
+    const list = `<ul class="cf-list">${files.slice(0, 12).map((f) => `<li>${esc(f.path)} <span>· ${fmtSize(f.size)}</span></li>`).join("")}${files.length > 12 ? `<li>… ve ${files.length - 12} dosya daha</li>` : ""}</ul>`;
+    const ok1 = await ask({ step: "1 / 2", title: `“${title}” silinsin mi?`, body: `Silinecek: <b>${esc(what)}</b>${list}`, ok: "Sil" });
+    if (!ok1) return;
+    const ok2 = await ask({ step: "2 / 2", title: "Emin misiniz? Bu işlem geri alınamaz.",
+      body: `<b>${files.length} dosya</b> sunucudan <b>kalıcı olarak</b> silinecek. Çöp kutusuna gitmez, geri getirilemez.${list}`, ok: "Evet, kalıcı olarak sil" });
+    if (!ok2) return;
+    try {
+      const r = await fetch("/api/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, title, confirm: "KALICI-SIL" }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      $("#detail").open && $("#detail").close();
+      await load();
+      toast(d.errors && d.errors.length ? `${d.deleted.length} silindi, ${d.errors.length} silinemedi` : `${d.deleted.length} dosya kalıcı olarak silindi`);
+    } catch (e) { toast("Silinemedi: " + e.message); }
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-del]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    deleteFiles(b.dataset.del.split(","), b.dataset.title, b.dataset.what);
+  });
 
   // ---------- ayarlar ----------
   function setStatus(msg, kind) {
