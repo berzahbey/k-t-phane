@@ -54,7 +54,7 @@
     if (s.scanning) {
       p.hidden = false; btn.classList.add("spin");
       bar.style.width = (s.total ? (100 * s.done) / s.total : 5) + "%";
-      $("#scanInfo").textContent = `Taranıyor… ${s.done.toLocaleString("tr")} / ${s.total.toLocaleString("tr")}`;
+      $("#scanInfo").innerHTML = `Taranıyor… ${s.done.toLocaleString("tr")} / ${s.total.toLocaleString("tr")}` + (s.current ? `<br><small title="${esc(s.current)}">${esc(s.current.split("/").pop())}</small>` : "");
       if (!pollTimer) pollTimer = setInterval(poll, 2000);
     } else {
       p.hidden = true; btn.classList.remove("spin");
@@ -67,7 +67,7 @@
   function analysisLine() {
     const a = state.analysis; if (!a) return "";
     let h = "";
-    if (a.pending) h += `<br>İçerik okunuyor: ${a.pending.toLocaleString("tr")} dosya kaldı`;
+    if (a.pending) h += `<br>İçerik okunuyor: ${a.pending.toLocaleString("tr")} dosya kaldı` + (a.current ? `<br><small>${esc(a.current)}</small>` : "");
     if (a.ai && a.ai.enabled) {
       h += `<br>Gemini: bugün ${a.ai.today}/${a.ai.daily_limit}`;
       if (a.ai_pending) h += ` · ${a.ai_pending.toLocaleString("tr")} kitap sırada`;

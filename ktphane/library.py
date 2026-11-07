@@ -245,6 +245,7 @@ class Library:
                             self.files = {**self.files, **new}
                             self._version += 1
                 self.status["done"] = i
+                self.status["current"] = rel
             with self._lock:
                 removed = set(self.files) - set(new)
                 self.files = new
@@ -291,11 +292,8 @@ class Library:
                            lang_code=m.get("language", ""), subjects=m.get("subjects", []),
                            description=m.get("description", ""), publisher=m.get("publisher", ""),
                            year=m.get("year", ""), cover_member=m.get("cover"))
-            elif ext == "pdf":
-                m = metadata.read_pdf(full_path)
-                rec.update(meta_title=metadata.clean_meta_value(m.get("title")),
-                           meta_author=metadata.clean_meta_value(m.get("author")),
-                           pages=m.get("pages"), needs_ocr=m.get("needs_ocr"))
+            # PDF'ler taramada AÇILMAZ (bazıları dakikalarca sürer); sayfa sayısı, OCR durumu ve
+            # içerik arka plandaki analizde ayrı süreçte, zaman aşımıyla okunur.
         except Exception as e:
             log.info("Okunamadı %s: %s", rel, e)
             rec["broken"] = True
@@ -322,6 +320,17 @@ class Library:
                                    "added": 0, "lang_code": ""}
             fmt = {k: f[k] for k in ("id", "ext", "size", "pages", "needs_ocr", "broken", "path", "name")}
             fmt["ckey"] = _ckey(f)
+            a = self.enricher.get(fmt["ckey"]) if getattr(self, "enricher", None) else None
+            if a:
+                if fmt["needs_ocr"] is None and "needs_ocr" in a:
+                    fmt["needs_ocr"] = a["needs_ocr"]
+                fmt["pages"] = fmt["pages"] or a.get("pages")
+                if a.get("error") and f["ext"] == "pdf":
+                    fmt["broken"] = fmt["broken"] or "zaman aşımı" not in a["error"]
+                if f["ext"] == "pdf" and a.get("meta_author") and not g["author"]:
+                    g["author"] = tr_title(a["meta_author"])
+                if f["ext"] == "pdf" and a.get("meta_title") and _looks_junk(g["title"]):
+                    g["title"] = tr_title(a["meta_title"])
             g["formats"].append(fmt)
             g["subjects"] = g["subjects"] or f.get("subjects", [])
             g["description"] = g["description"] or f.get("description", "")

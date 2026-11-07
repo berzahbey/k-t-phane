@@ -121,13 +121,22 @@ class Enricher:
         path = self.lib.abs_path(f)
         entry = {"v": ANALYSIS_VERSION, "t": int(time.time())}
         try:
-            ex = content.extract(f, path)
-            text = ex["text"]
+            ex = self._run_worker(path, f["ext"])
+            if ex.get("error"):
+                raise RuntimeError(ex["error"])
+            text = ex.get("text") or ""
             lang, lconf = content.detect_text_language(text)
-            main, sub, score, ratio = classify_text(text, ex["toc"])
-            entry.update(lang=lang, lang_conf=lconf, ocr=ex["ocr"], chars=len(text),
+            main, sub, score, ratio = classify_text(text, ex.get("toc") or [])
+            entry.update(lang=lang, lang_conf=lconf, ocr=ex.get("ocr"), chars=len(text),
                          kw={"cat": main, "sub": sub, "score": score, "ratio": ratio},
-                         toc=ex["toc"][:30], sample=text[:3500])
+                         toc=(ex.get("toc") or [])[:30], sample=text[:3500])
+            for k in ("pages", "needs_ocr", "encrypted"):
+                if k in ex:
+                    entry[k] = ex[k]
+            from .metadata import clean_meta_value
+            for k in ("meta_title", "meta_author"):
+                if ex.get(k):
+                    entry[k] = clean_meta_value(ex[k])
         except Exception as e:
             log.info("İçerik okunamadı %s: %s", f["path"], e)
             entry.update(error=str(e)[:200])
@@ -139,6 +148,23 @@ class Enricher:
             self.data[key] = entry
         self.status["done"] += 1
         self._flush()
+
+    WORKER_TIMEOUT = int(os.environ.get("ANALYSIS_TIMEOUT", "300"))
+
+    def _run_worker(self, path, ext):
+        """İçeriği ayrı süreçte oku; takılırsa öldür."""
+        import subprocess
+        import sys
+        try:
+            r = subprocess.run(["nice", "-n", "10", sys.executable, "-m", "ktphane.worker", path, ext],
+                               capture_output=True, text=True, timeout=self.WORKER_TIMEOUT,
+                               cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        except subprocess.TimeoutExpired:
+            return {"error": f"zaman aşımı ({self.WORKER_TIMEOUT} sn) — dosya çok büyük veya bozuk olabilir"}
+        try:
+            return json.loads(r.stdout or "{}") or {"error": (r.stderr or "boş çıktı")[-200:]}
+        except ValueError:
+            return {"error": (r.stderr or r.stdout or "okunamadı")[-200:]}
 
     def _stage2(self, b, primary):
         self.status.update(running=True, current="Gemini: " + b["title"])
