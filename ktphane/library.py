@@ -333,8 +333,10 @@ class Library:
                 if fmt["needs_ocr"] is None and "needs_ocr" in a:
                     fmt["needs_ocr"] = a["needs_ocr"]
                 fmt["pages"] = fmt["pages"] or a.get("pages")
-                if a.get("error") and f["ext"] == "pdf":
-                    fmt["broken"] = fmt["broken"] or "zaman aşımı" not in a["error"]
+                if a.get("error"):
+                    fmt["error"] = a["error"]
+                    if f["ext"] == "pdf" and a.get("open_failed"):
+                        fmt["broken"] = True
                 if f["ext"] == "pdf" and a.get("meta_author") and not g["author"]:
                     g["author"] = tr_title(a["meta_author"])
                 if f["ext"] == "pdf" and a.get("meta_title") and _looks_junk(g["title"]):
@@ -421,11 +423,10 @@ class Library:
         pending = False
         if enr:
             readable = [x for x in g["formats"] if not x["broken"] and x["ext"] in ("epub", "pdf", "txt")]
+            # Yalnızca içerik okunana kadar bekler. Gemini'yi beklemez (kuyruk günler sürebilir);
+            # Gemini sonradan farklı karar verirse kitap bir kez daha taşınır.
             if any(not enr.get(x["ckey"]) for x in readable):
                 pending = True
-            elif readable and not override.get("cat") and not ai and enr.ai.available():
-                tried = any((a.get("ai") or {}).get("failed") for a in analyses)
-                pending = not tried
         g["pending"] = pending
 
     def get_file(self, fid):

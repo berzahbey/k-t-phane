@@ -16,12 +16,16 @@ def run(path, ext):
     out = {"text": "", "toc": [], "ocr": False}
     if ext == "pdf":
         from pypdf import PdfReader
-        reader = PdfReader(path, strict=False)
-        if reader.is_encrypted:
-            try:
-                reader.decrypt("")
-            except Exception:
-                return {**out, "encrypted": True}
+        try:
+            reader = PdfReader(path, strict=False)
+            if reader.is_encrypted:
+                try:
+                    reader.decrypt("")
+                except Exception:
+                    return {**out, "encrypted": True}
+            len(reader.pages)
+        except Exception as e:
+            return {"error": f"PDF açılamadı: {type(e).__name__}: {e}"[:300], "open_failed": True}
         try:
             info = reader.metadata or {}
             out["meta_title"] = str(info.get("/Title") or "").strip()
@@ -38,10 +42,18 @@ def run(path, ext):
             if len(first.strip()) >= 80:
                 break
         out["needs_ocr"] = len(first.strip()) < 80
-        text = content.pdf_text(path) if not out["needs_ocr"] else ""
+        text = ""
+        if not out["needs_ocr"]:
+            try:
+                text = content.pdf_text(path)
+            except Exception as e:
+                out["warning"] = f"metin okunamadı: {e}"[:200]
         if len(text.strip()) < 300:
-            text = content.pdf_ocr(path)
-            out["ocr"] = True
+            try:
+                text = content.pdf_ocr(path)
+                out["ocr"] = True
+            except Exception as e:
+                out["warning"] = f"OCR yapılamadı: {e}"[:200]
         out["text"] = text
     else:
         out.update(content.extract({"ext": ext}, path))

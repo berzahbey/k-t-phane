@@ -297,7 +297,7 @@
     const formats = b.formats.map((f) => {
       const readable = (f.ext === "epub" || f.ext === "pdf" || f.ext === "txt") && !f.broken;
       const readUrl = f.ext === "epub" ? `/read/${f.id}` : `/file/${f.id}`;
-      const extra = [fmtSize(f.size), f.pages ? f.pages + " sayfa" : ""].filter(Boolean).join(" · ");
+      const extra = [fmtSize(f.size), f.pages ? f.pages + " sayfa" : "", f.error ? `<span style="color:var(--warn)">${esc(f.error)}</span>` : ""].filter(Boolean).join(" · ");
       return `<div class="fmt-row"><div class="info"><div class="badges">${badgesHtml({ formats: [f], language: b.language }).replace(/<span class="badge lang">.*$/, "")}</div><div class="fn" title="${esc(f.path)}">${esc(f.name)} · ${extra}</div></div>
         ${readable ? `<a class="btn primary" href="${readUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2zM22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>Oku</a>` : ""}
         <a class="btn" href="/download/${f.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>İndir</a></div>`;
@@ -380,7 +380,7 @@
         (l.errors && l.errors.length ? `<br><small>${l.errors.length} dosya taşınamadı: ${esc(l.errors.slice(0, 3).join(" · "))}</small>` : "") + `</div>`;
     }
     if (!st.running && !d.scanning) {
-      if (d.pending_books) h += `<div class="org-card">${d.pending_books.toLocaleString("tr")} kitabın içeriği henüz inceleniyor; analiz bitince ${d.auto ? "otomatik" : "burada"} yerleştirilecek.</div>`;
+      if (d.pending_books) h += `<div class="org-card">${d.pending_books.toLocaleString("tr")} kitabın içeriği henüz okunuyor; okununca ${d.auto ? "otomatik" : "burada"} yerleştirilecek. (Gemini sonradan farklı bir kategori bulursa kitap bir kez daha taşınabilir.)</div>`;
       if (!d.count) {
         h += `<div class="org-card ok">${d.pending_books ? "İncelenmiş" : "Bütün"} kitaplar doğru klasörde. ✓</div>`;
       } else {

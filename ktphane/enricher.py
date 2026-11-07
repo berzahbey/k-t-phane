@@ -83,7 +83,7 @@ class Enricher:
             if f["broken"] or f["ext"] not in ("epub", "pdf", "txt"):
                 continue
             a = self.data.get(_ckey(f))
-            if not a or a.get("v") != ANALYSIS_VERSION:
+            if not a or a.get("v") != ANALYSIS_VERSION or (a.get("error") and "retried" not in a):
                 stage1.append(f)
         stage1.sort(key=lambda f: (f.get("needs_ocr") is True, f["size"]))
         return stage1
@@ -167,6 +167,8 @@ class Enricher:
         try:
             ex = self._run_worker(path, f["ext"])
             if ex.get("error"):
+                if ex.get("open_failed"):
+                    entry["open_failed"] = True
                 raise RuntimeError(ex["error"])
             text = ex.get("text") or ""
             lang, lconf = content.detect_text_language(text)
@@ -185,6 +187,8 @@ class Enricher:
             log.info("İçerik okunamadı %s: %s", f["path"], e)
             entry.update(error=str(e)[:200])
         key = _ckey(f)
+        if entry.get("error"):
+            entry["retried"] = True
         with self.lib._lock:
             old = self.data.get(key) or {}
             if old.get("ai"):
