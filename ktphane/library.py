@@ -74,7 +74,9 @@ def folder_override(folders):
 
 
 def _looks_junk(title):
-    """'scan0001', 'IMG_2020', '12345' gibi anlamsız dosya adları."""
+    """'scan0001', 'IMG_2020', '12345', archive.org kimlikleri ('abikehfimiz00meuoft') gibi anlamsız adlar."""
+    if re.fullmatch(r"(?i)[a-z]{3,}\d{2}[a-z]{2,10}", title.replace(" ", "")):
+        return True
     letters = sum(c.isalpha() for c in title)
     return letters < 3 or bool(re.fullmatch(r"(?i)(scan|img|dsc|doc|file|book|kitap|untitled)?[\W_\d]*", title))
 
@@ -111,6 +113,10 @@ class Library:
         self.org_file = os.path.join(self.data_dir, "organizer.json")
         self.org = {"auto": False, "placed": {}, "journal": []}
         self.org_status = {"running": False, "last": None}
+        self.user_ov_file = os.path.join(self.data_dir, "elle-duzeltmeler.json")
+        self.prefs_file = os.path.join(self.data_dir, "tercihler.json")
+        self.user_ov = self._read_json(self.user_ov_file, {})
+        self.prefs = self._read_json(self.prefs_file, {"folder_strict": True})
         self._load_cache()
         self._load_org()
 
@@ -142,6 +148,36 @@ class Library:
             pass
         except Exception as e:
             log.warning("Önbellek okunamadı: %s", e)
+
+    @staticmethod
+    def _read_json(path, default):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return default
+
+    def write_json(self, path, data):
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+
+    def set_manual(self, ckeys, cat=None, sub=None, lang=None):
+        with self._lock:
+            for k in ckeys:
+                if not cat and not lang:
+                    self.user_ov.pop(k, None)
+                else:
+                    self.user_ov[k] = {k2: v for k2, v in (("cat", cat), ("sub", sub), ("lang", lang)) if v}
+            self._version += 1
+        self.write_json(self.user_ov_file, self.user_ov)
+
+    def set_pref(self, key, value):
+        with self._lock:
+            self.prefs[key] = value
+            self._version += 1
+        self.write_json(self.prefs_file, self.prefs)
 
     def _load_org(self):
         try:
@@ -357,8 +393,10 @@ class Library:
             fmt["ckey"] = _ckey(f)
             a = self.enricher.get(fmt["ckey"]) if getattr(self, "enricher", None) else None
             if a:
-                if fmt["needs_ocr"] is None and "needs_ocr" in a:
+                if "needs_ocr" in a and (fmt["needs_ocr"] is None or a.get("bad_text_layer")):
                     fmt["needs_ocr"] = a["needs_ocr"]
+                if a.get("bad_text_layer"):
+                    fmt["bad_text_layer"] = True
                 fmt["pages"] = fmt["pages"] or a.get("pages")
                 if a.get("error"):
                     fmt["error"] = a["error"]
@@ -407,12 +445,17 @@ class Library:
     AI_MIN_CONF = 0.55
 
     def _decide(self, g, override, user_folders):
-        """Kategori ve dil kararı. Öncelik: kullanıcının klasörü > Gemini > içerik > ad/etiket."""
+        """Kategori ve dil kararı.
+        Öncelik: elle düzeltme > (ayar açıksa) eski klasör adı > Gemini > içerik > ad/etiket."""
         enr = getattr(self, "enricher", None)
         analyses = [enr.get(x["ckey"]) for x in g["formats"]] if enr else []
         analyses = [a for a in analyses if a]
-        ai = next((a["ai"] for a in analyses if a.get("ai") and not a["ai"].get("failed")), None)
+        ai_any = next((a["ai"] for a in analyses if a.get("ai")), None)
+        ai = ai_any if ai_any and not ai_any.get("failed") else None
         body = max(analyses, key=lambda a: a.get("chars", 0), default=None)
+        manual = next((self.user_ov[x["ckey"]] for x in g["formats"] if x["ckey"] in self.user_ov), None)
+        if not self.prefs.get("folder_strict", True):
+            override = {}  # eski klasör adları yalnızca ipucu (classify'a puan olarak gider)
 
         main, sub, rscore = classify(g["title"], g["author"], g["subjects"], user_folders)
         why = {"source": "rules", "conf": min(1.0, rscore / 9),
@@ -422,16 +465,31 @@ class Library:
             main, sub = kw["cat"], kw["sub"]
             why = {"source": "content", "conf": min(0.9, kw["ratio"]),
                    "text": f"Kitabın içeriğindeki terimlerden (%{int(kw['ratio'] * 100)} {kw['cat']})"}
-        if ai and ai["conf"] >= self.AI_MIN_CONF and ai["cat"] != "Diğer":
-            main, sub = ai["cat"], ai["sub"]
-            why = {"source": "ai", "conf": ai["conf"], "text": ai.get("reason") or "Gemini"}
+        before = {"cat": main, "sub": sub}
+        ai_state = "none"
+        if ai:
+            if ai["conf"] >= self.AI_MIN_CONF and ai["cat"] != "Diğer":
+                ai_state = "changed" if (ai["cat"], ai["sub"]) != (main, sub) else "same"
+                main, sub = ai["cat"], ai["sub"]
+                why = {"source": "ai", "conf": ai["conf"], "text": ai.get("reason") or "Gemini"}
+            else:
+                ai_state = "unsure"
+        elif enr and enr.ai.enabled:
+            ai_state = "failed" if ai_any else "waiting"
         if override.get("cat"):
             if override["cat"] != main:
                 main, sub = override["cat"], "Genel"
-            why = {"source": "folder", "conf": 1.0, "text": "Senin klasör seçimin"}
+            why = {"source": "folder", "conf": 1.0, "text": "Eski klasör adı (" + override["cat"] + ")"}
+            ai_state = "skipped"
+        if manual and manual.get("cat"):
+            main, sub = manual["cat"], manual.get("sub") or "Genel"
+            why = {"source": "manual", "conf": 1.0, "text": "Elle düzeltildi"}
         g["category"], g["subcategory"] = main, sub
+        g["ai_state"] = ai_state
+        g["before_ai"] = before if ai_state == "changed" else None
+        g["manual"] = bool(manual)
 
-        lang = override.get("lang")
+        lang = (manual or {}).get("lang") or override.get("lang")
         if not lang and ai and ai.get("lang") and ai["lang"] != "Diğer" and ai["conf"] >= self.AI_MIN_CONF:
             lang = ai["lang"]
         if not lang and body and body.get("lang") and body.get("lang_conf", 0) >= 0.45:
@@ -443,7 +501,8 @@ class Library:
                 g["author"] = ai["author"]
             if _looks_junk(g["title"]) and ai.get("title"):
                 g["title"] = ai["title"]
-        g["override"] = override
+        g["folder_override"] = override
+        g["override"] = {**override, **({k: v for k, v in manual.items() if k in ("cat", "lang") and v} if manual else {})}
         g["why"] = why
         g["ocr_text"] = any(a.get("ocr") for a in analyses)
         # Düzenleyici, analizi bitmemiş kitabı taşımaz (iki kez taşınmasın)

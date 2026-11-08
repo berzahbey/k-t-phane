@@ -195,3 +195,25 @@ def detect_text_language(text):
     if scores[best] < 5:
         return None, 0.0
     return best, round(scores[best] / total, 2)
+
+
+# ---------- metin katmanı kalitesi ----------
+_ALL_STOP = set().union(*_LATIN_SETS.values())
+
+
+def text_layer_ok(text):
+    """PDF'in gömülü metni gerçek bir dil mi, yoksa yanlış dilde yapılmış OCR'ın çöpü mü?
+    (archive.org gibi kaynaklardaki Osmanlıca/Arapça taramalar İngilizce OCR'la gelir.)"""
+    sample = (text or "")[:8000]
+    letters = [c for c in sample if c.isalpha()]
+    if len(letters) < 200:
+        return False
+    if sum(1 for c in letters if ARABIC_RE.match(c)) / len(letters) > 0.5:
+        return True  # gerçek Arap harfli metin katmanı
+    toks = words(sample)
+    if len(toks) < 40:
+        return False
+    hits = sum(1 for t in toks if t in _ALL_STOP)
+    avg = sum(len(t) for t in toks) / len(toks)
+    # gerçek metinde bağlaç/edat oranı ~%10-40; çöp OCR'da ~%0-3 ve çok kısa/çok uzun "kelimeler"
+    return hits / len(toks) >= 0.04 and 2.5 <= avg <= 12

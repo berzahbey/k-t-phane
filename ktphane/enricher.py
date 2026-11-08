@@ -29,6 +29,7 @@ class Enricher:
         self._ai_wake = threading.Event()
         self._flush_lock = threading.Lock()
         self._dirty = 0
+        self.priority = set()
 
     def _load(self):
         try:
@@ -85,6 +86,8 @@ class Enricher:
             a = self.data.get(_ckey(f))
             if not a or a.get("v") != ANALYSIS_VERSION or (a.get("error") and "retried" not in a):
                 stage1.append(f)
+            elif f["ext"] == "pdf" and a.get("needs_ocr") is False and not a.get("tq"):
+                stage1.append(f)  # eski sürümde metin katmanının kalitesine bakılmamıştı
         stage1.sort(key=lambda f: (f.get("needs_ocr") is True, f["size"]))
         return stage1
 
@@ -94,8 +97,9 @@ class Enricher:
         if not self.ai.enabled:
             return stage2
         for b in self.lib.books():
-            if b.get("override", {}).get("cat"):
-                continue  # kullanıcı klasörü belirlemiş, kota harcama
+            prio = any(x.get("ckey") in self.priority for x in b["formats"])
+            if b.get("override", {}).get("cat") and not prio:
+                continue  # kullanıcı (klasör veya elle) belirlemiş, kota harcama
             keys = [x["ckey"] for x in b["formats"] if x.get("ckey")]
             ais = [(self.data.get(k) or {}).get("ai") for k in keys]
             if any(x and not x.get("failed") for x in ais):
@@ -105,8 +109,19 @@ class Enricher:
             primary = next((x for x in b["formats"] if not x["broken"] and x["ext"] in ("epub", "pdf", "txt")), None)
             if primary and self.data.get(primary["ckey"]):
                 stage2.append((b, primary))
-        stage2.sort(key=lambda bp: bp[0].get("why", {}).get("conf", 0))
+        stage2.sort(key=lambda bp: (not any(x.get("ckey") in self.priority for x in bp[0]["formats"]),
+                                    bp[0].get("why", {}).get("conf", 0)))
         return stage2
+
+    def ask_again(self, ckeys, redo=False):
+        """Kitabı Gemini sırasının başına al; redo=True ise önceki Gemini kararını sil."""
+        with self.lib._lock:
+            for k in ckeys:
+                self.priority.add(k)
+                if redo and k in self.data:
+                    self.data[k].pop("ai", None)
+            self.lib._version += 1
+        self._ai_wake.set()
 
     def _loop(self):
         time.sleep(5)
@@ -176,7 +191,7 @@ class Enricher:
             entry.update(lang=lang, lang_conf=lconf, lang_v=LANG_VERSION, ocr=ex.get("ocr"), chars=len(text),
                          kw={"cat": main, "sub": sub, "score": score, "ratio": ratio},
                          toc=(ex.get("toc") or [])[:30], sample=text[:3500])
-            for k in ("pages", "needs_ocr", "encrypted"):
+            for k in ("pages", "needs_ocr", "encrypted", "tq", "bad_text_layer"):
                 if k in ex:
                     entry[k] = ex[k]
             from .metadata import clean_meta_value
@@ -232,6 +247,7 @@ class Enricher:
                 k = x.get("ckey")
                 if k and k in self.data:
                     self.data[k]["ai"] = res or {"failed": True, "t": int(time.time())}
+                self.priority.discard(k)
         self.status["done"] += 1
         self._flush()
 

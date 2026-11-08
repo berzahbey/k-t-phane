@@ -91,7 +91,7 @@ def plan(lib):
             dst = target_for(b, f)
             if not _same_place(dst, f["path"]):
                 moves.append({"id": f["id"], "from": f["path"], "to": dst, "title": b["title"],
-                              "override": b.get("override") or {}})
+                              "override": b.get("folder_override") or {}})
     moves.sort(key=lambda m: m["to"].casefold())
     return moves
 

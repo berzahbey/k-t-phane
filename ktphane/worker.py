@@ -42,12 +42,18 @@ def run(path, ext):
             if len(first.strip()) >= 80:
                 break
         out["needs_ocr"] = len(first.strip()) < 80
+        out["tq"] = True  # metin kalitesi kontrol edildi
         text = ""
         if not out["needs_ocr"]:
             try:
                 text = content.pdf_text(path)
             except Exception as e:
                 out["warning"] = f"metin okunamadı: {e}"[:200]
+            if not content.text_layer_ok(text):
+                # gömülü metin anlamsız (yanlış dilde OCR) -> aslında taranmış kitap
+                out["needs_ocr"] = True
+                out["bad_text_layer"] = True
+                text = ""
         if len(text.strip()) < 300:
             try:
                 text = content.pdf_ocr(path)

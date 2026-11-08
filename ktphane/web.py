@@ -130,7 +130,7 @@ def create_app():
     # ---------- ayarlar ----------
     @app.get("/api/settings")
     def settings_get():
-        return jsonify(ai=lib.enricher.ai.public_settings(), ai_status=lib.enricher.ai.status())
+        return jsonify(ai=lib.enricher.ai.public_settings(), ai_status=lib.enricher.ai.status(), prefs=lib.prefs)
 
     @app.post("/api/settings")
     def settings_post():
@@ -191,6 +191,35 @@ def create_app():
         lib.dedupe.state["auto"] = bool(d.get("on")) and d.get("confirm") == "KALICI-SIL"
         lib.dedupe.save_state()
         return jsonify(auto=lib.dedupe.state["auto"])
+
+    # ---------- elle düzeltme / Gemini'ye sor ----------
+    @app.post("/api/book/category")
+    def book_category():
+        d = request.get_json(silent=True) or {}
+        ckeys = [k for k in d.get("ckeys") or [] if isinstance(k, str)]
+        if not ckeys:
+            return jsonify(error="Kitap seçilmedi"), 400
+        lib.set_manual(ckeys, cat=d.get("cat") or None, sub=d.get("sub") or None, lang=d.get("lang") or None)
+        if lib.org.get("auto") and organizer.writable(lib):
+            organizer.run_in_background(lib, organizer.apply_locked, auto=True)
+        return jsonify(ok=True)
+
+    @app.post("/api/book/ask-ai")
+    def book_ask_ai():
+        d = request.get_json(silent=True) or {}
+        ckeys = [k for k in d.get("ckeys") or [] if isinstance(k, str)]
+        if d.get("clear_manual"):
+            lib.set_manual(ckeys)
+        lib.enricher.ask_again(ckeys, redo=bool(d.get("redo")))
+        return jsonify(ok=True, ai=lib.enricher.ai.status())
+
+    @app.post("/api/prefs")
+    def prefs_post():
+        d = request.get_json(silent=True) or {}
+        if "folder_strict" in d:
+            lib.set_pref("folder_strict", bool(d["folder_strict"]))
+            lib.enricher.wake()
+        return jsonify(prefs=lib.prefs)
 
     def _rec(fid):
         rec = lib.get_file(fid)

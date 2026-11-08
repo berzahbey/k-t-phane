@@ -1,3 +1,3 @@
 """Kitaplık — ev sunucusu için kişisel kitap arşivi."""
 
-__version__ = "2.6.2"
+__version__ = "2.7.0"

@@ -306,3 +306,10 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .dup-ign summary { cursor: pointer; color: var(--muted); }
 .dup-ign-row { padding: 4px 0 4px 14px; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---------- elle düzeltme ---------- */
+.edit-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; }
+.edit-box summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); }
+.edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.edit-row select { flex: 1; min-width: 140px; height: 32px; }
+.edit-row.small { gap: 14px; font-size: 12.5px; }

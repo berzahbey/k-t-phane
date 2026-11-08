@@ -28,6 +28,10 @@
     broken: { label: "Bozuk / okunamadı", test: (b) => b.formats.some((f) => f.broken) },
     multi: { label: "Birden fazla format", test: (b) => b.formats.length > 1 },
     series: { label: "Koleksiyon (çok ciltli)", test: (b) => !!b.series },
+    ai_changed: { label: "Gemini yerini değiştirdi", test: (b) => b.ai_state === "changed" },
+    ai_waiting: { label: "Gemini sırasında", test: (b) => b.ai_state === "waiting" },
+    folder_locked: { label: "Eski klasöre göre", test: (b) => b.why?.source === "folder" },
+    manual: { label: "Elle düzeltildi", test: (b) => !!b.manual },
   };
   const fmtGroup = (ext) => (ext === "epub" || ext === "pdf" ? ext.toUpperCase() : "Diğer");
 
@@ -181,7 +185,7 @@
     for (const f of b.formats) {
       if (f.broken) out.push(`<span class="badge broken">${f.ext.toUpperCase()} bozuk</span>`);
       else if (f.ext === "epub") out.push(`<span class="badge epub">EPUB</span>`);
-      else if (f.ext === "pdf") out.push(f.needs_ocr ? `<span class="badge ocr">PDF · OCR</span>` : `<span class="badge text">PDF · Metin</span>`);
+      else if (f.ext === "pdf") out.push(f.needs_ocr ? `<span class="badge ocr" title="${f.bad_text_layer ? "İçindeki metin katmanı anlamsız (yanlış dilde OCR); taranmış sayıldı" : "Taranmış sayfa"}">PDF · OCR</span>` : `<span class="badge text">PDF · Metin</span>`);
       else out.push(`<span class="badge">${f.ext.toUpperCase()}</span>`);
     }
     out.push(`<span class="badge lang">${esc(b.language)}</span>`);
@@ -275,6 +279,7 @@
       <dl class="d-meta"><dt>Kategori</dt><dd>${esc(c.category)} › ${esc(c.subcategory)}</dd><dt>Dil</dt><dd>${esc(c.language)}</dd>
       <dt>Klasör</dt><dd>${esc(c.language)} / ${esc(c.category)} / Koleksiyonlar / ${esc(c.title)}</dd></dl>
       <div class="vols">${vols}</div>
+      ${editHtml(c.formats.map((f) => f.ckey), { category: c.category, subcategory: c.subcategory, language: c.language, manual: c.volumes.some((v) => v.manual) })}
       <button class="linkish danger-link" data-del="${c.formats.map((f) => f.id).join(",")}" data-title="${esc(c.title)}" data-what="koleksiyonun tamamını (${c.volumes.length} cilt)">Koleksiyonu tümüyle sil</button></div></div>`;
     const img = $("#detailBody img[data-src]");
     if (img) { img.addEventListener("load", () => img.classList.add("ok")); img.addEventListener("error", () => img.remove()); img.src = img.dataset.src; }
@@ -288,12 +293,14 @@
     const b = state.books.find((x) => x.id === id);
     if (!b) return;
     const dir = isRtl(b.title) ? ' dir="rtl"' : "";
-    const src = { ai: "Yapay zeka (Gemini)", content: "Kitabın içeriği", folder: "Senin klasörün", rules: "Dosya adı / etiketler" }[b.why?.source] || "";
+    const src = { ai: "Yapay zeka (Gemini)", content: "Kitabın içeriği", folder: "Eski klasör adı", rules: "Dosya adı / etiketler", manual: "Elle düzeltildi" }[b.why?.source] || "";
     const whyTxt = b.pending ? "İçerik analizi sürüyor…" : b.why?.source === "rules" ? esc(b.why.text) :
-      `${src}${b.why?.source === "ai" ? ` · %${Math.round(b.why.conf * 100)} emin` : ""}${b.why?.source === "folder" ? "" : ` — ${esc(b.why?.text || "")}`}`;
+      `${src}${b.why?.source === "ai" ? ` · %${Math.round(b.why.conf * 100)} emin` : ""}${["folder", "manual"].includes(b.why?.source) ? "" : ` — ${esc(b.why?.text || "")}`}`;
     const meta = [
       ["Kategori", `${esc(b.category)} › ${esc(b.subcategory)}`],
       ["Neden", whyTxt],
+      b.before_ai && ["Gemini'den önce", `<span class="muted">${esc(b.before_ai.cat)} › ${esc(b.before_ai.sub)}</span>`],
+      ["Gemini", { changed: "yerini değiştirdi", same: "önceki tahmini onayladı", unsure: "emin olamadı", waiting: "sırada bekliyor", failed: "cevap alınamadı", skipped: "sorulmadı (eski klasöre göre)", none: "kapalı" }[b.ai_state] || "—"],
       ["Dil", esc(b.language)],
       b.year && ["Yıl", esc(b.year)],
       b.publisher && ["Yayınevi", esc(b.publisher)],
@@ -314,6 +321,7 @@
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
       ${b.description ? `<p class="d-desc">${esc(b.description)}</p>` : ""}
       <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div>
+      ${editHtml(b.formats.map((f) => f.ckey), b)}
       ${b.formats.length > 1 ? `<button class="linkish danger-link" data-del="${b.formats.map((f) => f.id).join(",")}" data-title="${esc(b.title)}" data-what="tüm formatları (${b.formats.length} dosya)">Kitabı tümüyle sil</button>` : ""}</div></div>`;
     const img = $("#detailBody img[data-src]");
     if (img) { img.addEventListener("load", () => img.classList.add("ok")); img.addEventListener("error", () => img.remove()); img.src = img.dataset.src; }
@@ -489,6 +497,47 @@
     if (ok) setSelecting(false);
   });
 
+  // ---------- elle düzeltme / Gemini'ye sor ----------
+  const LANGS = ["Türkçe", "Osmanlıca", "Arapça", "Farsça", "English", "Nederlands", "Deutsch", "Français"];
+  function editHtml(ckeys, b) {
+    const opts = Object.entries(state.tree).map(([m, subs]) => `<optgroup label="${esc(m)}">${subs.map((sub) =>
+      `<option value="${esc(m)}|${esc(sub)}" ${b.category === m && b.subcategory === sub ? "selected" : ""}>${esc(m)} › ${esc(sub)}</option>`).join("")}</optgroup>`).join("") +
+      `<option value="Diğer|Sınıflandırılmamış" ${b.category === "Diğer" ? "selected" : ""}>Diğer</option>`;
+    const langs = LANGS.map((l) => `<option ${b.language === l ? "selected" : ""}>${l}</option>`).join("");
+    const k = esc(ckeys.join(","));
+    return `<details class="edit-box"><summary>Yeri yanlış mı? Düzelt</summary>
+      <div class="edit-row"><select class="ed-cat">${opts}</select><select class="ed-lang">${langs}</select>
+      <button class="btn primary sm" data-save-cat="${k}">Kaydet</button></div>
+      <div class="edit-row small">
+        <button class="linkish" data-ask-ai="${k}">Gemini'ye şimdi sor</button>
+        <button class="linkish" data-redo-ai="${k}">Gemini'ye yeniden sor</button>
+        ${b.manual ? `<button class="linkish" data-clear-cat="${k}">Elle düzeltmeyi kaldır</button>` : ""}
+      </div>
+      <p class="muted small">Kaydedince kitap bu kategori ve dilde kalır, Gemini değiştirmez. Otomatik düzenleme açıksa doğru klasöre taşınır.</p></details>`;
+  }
+  async function post(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d;
+  }
+  document.addEventListener("click", async (e) => {
+    const el = e.target.closest("[data-save-cat],[data-ask-ai],[data-redo-ai],[data-clear-cat]"); if (!el) return;
+    e.preventDefault();
+    try {
+      if (el.dataset.saveCat) {
+        const box = el.closest(".edit-box"); const [cat, sub] = box.querySelector(".ed-cat").value.split("|");
+        await post("/api/book/category", { ckeys: el.dataset.saveCat.split(","), cat, sub, lang: box.querySelector(".ed-lang").value });
+        toast(`Kaydedildi: ${cat} › ${sub}`);
+      } else if (el.dataset.askAi) {
+        await post("/api/book/ask-ai", { ckeys: el.dataset.askAi.split(",") }); toast("Gemini sırasının başına alındı");
+      } else if (el.dataset.redoAi) {
+        await post("/api/book/ask-ai", { ckeys: el.dataset.redoAi.split(","), redo: true, clear_manual: true }); toast("Gemini yeniden değerlendirecek");
+      } else if (el.dataset.clearCat) {
+        await post("/api/book/category", { ckeys: el.dataset.clearCat.split(",") }); toast("Elle düzeltme kaldırıldı");
+      }
+      $("#detail").close(); await load();
+    } catch (er) { toast("Olmadı: " + er.message); }
+  });
+
   // ---------- kopyalar ----------
   let dupData = null;
   async function loadDupes() {
@@ -626,6 +675,7 @@
       const ai = d.ai, st = d.ai_status;
       $("#setKey").value = ""; $("#setKey").placeholder = ai.has_key ? `Kayıtlı: ${ai.key_hint}${ai.key_source === "env" ? " (compose)" : ""} — değiştirmek için yenisini yapıştırın` : "AIza…";
       $("#setLimit").value = ai.daily_limit; $("#setModel").value = ai.model;
+      $("#setFolderStrict").checked = d.prefs ? d.prefs.folder_strict !== false : true;
       if (ai.has_key) setStatus(st.paused_until ? `${esc(st.error || "Duraklatıldı")} — ${new Date(st.paused_until * 1000).toLocaleString("tr")} devam edecek. Bugün: ${st.today}/${st.daily_limit}` : st.error ? esc(st.error) : `Yapay zeka açık · bugün ${st.today}/${st.daily_limit} istek`, st.error ? "warn" : "ok");
       else setStatus("Yapay zeka kapalı — anahtar girilmemiş.", "");
     } catch (e) { setStatus("Ayarlar okunamadı: " + esc(e.message), "warn"); }
@@ -643,6 +693,11 @@
     } catch (e) { setStatus("Kaydedilemedi: " + esc(e.message), "warn"); }
   }
   $("#btnSettings").addEventListener("click", openSettings);
+  $("#setFolderStrict").addEventListener("change", async (e) => {
+    await post("/api/prefs", { folder_strict: e.target.checked });
+    toast(e.target.checked ? "Eski klasör adları kesin karar" : "Eski klasör adları artık sadece ipucu; Gemini bu kitaplara da bakacak");
+    load();
+  });
   document.addEventListener("click", (e) => { if (e.target.closest("[data-open-settings]")) openSettings(); });
   $("#settings").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   $("#setSave").addEventListener("click", () => {
