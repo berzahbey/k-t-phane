@@ -64,13 +64,15 @@ def assign(books):
         if len({n for _, _, n in items}) < 2:
             continue
         # farklı yazarlara ait aynı adlı eserler karışmasın
-        authors = Counter(fold(b["author"]) for b, _, _ in items if b["author"])
+        from .dedupe import first_author
+        authors = Counter(first_author(b["author"]) for b, _, _ in items if b["author"])
         main_author = authors.most_common(1)[0][0] if authors else ""
-        members = [(b, base, n) for b, base, n in items if not b["author"] or fold(b["author"]) == main_author]
+        members = [(b, base, n) for b, base, n in items
+                   if not b["author"] or first_author(b["author"]) in ("", main_author)]
         if len({n for _, _, n in members}) < 2:
             continue
         name = Counter(base for _, base, _ in members).most_common(1)[0][0]
-        author = next((b["author"] for b, _, _ in members if b["author"]), "")
+        author = min((b["author"] for b, _, _ in members if b["author"]), key=len, default="")  # en sade yazım
         # serinin tamamı aynı yerde dursun: çoğunluk kategorisi ve dili
         user_cat = next((b["override"].get("cat") for b, _, _ in members if b.get("override", {}).get("cat")), None)
         cats = Counter((b["category"], b["subcategory"]) for b, _, _ in members if b["category"] != "Diğer")

@@ -139,35 +139,13 @@ class Dedupe:
                     kind, reason = "kesin", "Aynı kitap, kopyalardan biri bozuk"
                 groups[f"b:{b['id']}:{ext}"] = {"kind": kind, "reason": reason, "files": fs}
 
-        # 2b) benzer başlık + aynı (ilk) yazar: "Cumhuriyet'in İlk Yüzyılı" ile
-        #     "Cumhuriyet'in İlk Yüzyılı (1923-2023)" / "İlber Ortaylı, İsmail Küçükkaya" gibi
-        fuzzy = {}
-        for b in books:
-            nt = norm_title(b["title"])
-            if len(nt) < 6:
-                continue
-            vol = b.get("volume") if b.get("series") else None
-            for f in b["formats"]:
-                fuzzy.setdefault((nt, vol, f["ext"]), []).append((b, f))
-        for (nt, vol, ext), items in fuzzy.items():
-            if len({b["id"] for b, _ in items}) < 2:
-                continue
-            # yazarları uyuşanları kümele (biri boşsa başlığa güven)
-            clusters = []
-            for b, f in items:
-                a = first_author(b["author"])
-                for c in clusters:
-                    if not a or not c["author"] or a == c["author"]:
-                        c["files"].append(f)
-                        c["author"] = c["author"] or a
-                        break
-                else:
-                    clusters.append({"author": a, "files": [f]})
-            for i, c in enumerate(clusters):
-                if len(c["files"]) > 1:
-                    groups[f"f:{ext}:{nt}:{vol}:{i}"] = {
-                        "kind": "muhtemel", "files": c["files"],
-                        "reason": "Başlık ve yazar çok benzer — farklı baskı olabilir"}
+        # 2b) benzer kitaplar: yazım hatası ("Muvazeneleri"/"Muvazeleleri"), başlığa eklenmiş yazar adı
+        #     ("El Muvafakat Şatıbi"/"El-Muvâfakât"), parantez/alt başlık/yıl farkı, ortak yazar
+        n = 0
+        for a, b2, fa, fb in similar_pairs(books):
+            n += 1
+            groups[f"f:{n}"] = {"kind": "muhtemel", "files": [fa, fb],
+                                "reason": "Başlık ve yazar çok benzer — farklı baskı olabilir"}
 
         # 3) çakışan grupları birleştir (aynı dosya hem birebir kopya hem aynı kitap grubunda olabilir)
         parent = {}
@@ -255,6 +233,80 @@ def first_author(a):
     a = re.split(r",|;|&|\sve\s|\sand\s|\s-\s", a)[0]
     toks = [t for t in re.findall(r"[^\W_]+", a) if t not in {"prof", "dr", "doc", "yrd", "hz", "imam", "seyh", "mr", "ed"}]
     return toks[-1] if toks else ""
+
+
+_STOP = {"ve", "ile", "bir", "the", "of", "and", "a", "an", "el", "al", "fi", "de", "da", "ın", "in", "un", "un"}
+
+
+def _title_tokens(t):
+    from .textutil import fold
+    t = fold(t or "")
+    t = re.sub(r"[\(\[\{].*?[\)\]\}]", " ", t)
+    t = re.sub(r"\b1[0-9]{3}\b|\b20[0-9]{2}\b", " ", t.replace("'", "").replace("’", ""))
+    t = _EDITION.sub(" ", t)
+    return [w for w in re.findall(r"[^\W_]+", t)]
+
+
+def _all_author_tokens(a):
+    from .textutil import fold
+    return {w for w in re.findall(r"[^\W_]+", fold(a or "")) if len(w) > 2}
+
+
+def similar_pairs(books):
+    """Aynı formatta, büyük olasılıkla aynı kitap olan dosya çiftleri: (kitapA, kitapB, dosyaA, dosyaB)."""
+    from difflib import SequenceMatcher
+    items = []
+    for b in books:
+        toks = _title_tokens(b["title"])
+        nt = "".join(toks)
+        if len(nt) < 6:
+            continue
+        items.append({"b": b, "nt": nt, "toks": set(toks), "key": {w for w in toks if w not in _STOP and len(w) >= 4},
+                      "fa": first_author(b["author"]), "atoks": _all_author_tokens(b["author"]),
+                      "digits": re.findall(r"\d+", nt), "vol": b.get("volume") if b.get("series") else None})
+    index = {}
+    for i, it in enumerate(items):
+        for w in it["key"]:
+            index.setdefault(w[:5], set()).add(i)  # ilk 5 harf: küçük yazım farklarına dayanıklı
+    # çok yaygın kelimeler ("tarih", "islam") aday üretmez; her kitap en nadir 2 kelimesiyle aranır
+    for it in items:
+        ks = sorted({w[:5] for w in it["key"]}, key=lambda k: len(index[k]))
+        it["probe"] = [k for k in ks if len(index[k]) <= 60] or ks[:2]
+    seen, out = set(), []
+    for i, a in enumerate(items):
+        cands = set()
+        for k in a["probe"]:
+            cands |= index.get(k, set())
+        for j in cands:
+            if j <= i or (i, j) in seen:
+                continue
+            seen.add((i, j))
+            b = items[j]
+            if a["b"]["id"] == b["b"]["id"]:
+                continue
+            if a["digits"] != b["digits"] or (a["vol"] or b["vol"]) and a["vol"] != b["vol"]:
+                continue  # farklı cilt / sayı
+            # yazar uyumu: ilk yazar aynı/benzer, biri boş, ya da yazar adı diğerinin başlığında geçiyor
+            fa, fb = a["fa"], b["fa"]
+            author_ok = (not fa or not fb or fa == fb or SequenceMatcher(None, fa, fb).ratio() >= 0.85
+                         or fa in b["toks"] or fb in a["toks"])
+            if not author_ok:
+                continue
+            sm = SequenceMatcher(None, a["nt"], b["nt"])
+            ratio = sm.ratio() if sm.real_quick_ratio() >= 0.9 and sm.quick_ratio() >= 0.9 else 0
+            small, big = (a, b) if len(a["toks"]) <= len(b["toks"]) else (b, a)
+            contained = (len(small["key"]) >= 1 and len(small["nt"]) >= 8
+                         and small["toks"] <= (big["toks"] | big["atoks"] | small["atoks"])
+                         and (big["toks"] - small["toks"]) <= (small["atoks"] | big["atoks"] | _STOP))
+            if ratio < 0.9 and not contained:
+                continue
+            fa_by_ext = {}
+            for f in a["b"]["formats"]:
+                fa_by_ext.setdefault(f["ext"], f)
+            for f in b["b"]["formats"]:
+                if f["ext"] in fa_by_ext:
+                    out.append((a["b"], b["b"], fa_by_ext[f["ext"]], f))
+    return out
 
 
 def _size(b):
