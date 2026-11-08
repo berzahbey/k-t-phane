@@ -207,6 +207,17 @@ def create_app():
             organizer.run_in_background(lib, organizer.apply_locked, auto=True)
         return jsonify(ok=True)
 
+    @app.post("/api/book/edit")
+    def book_edit():
+        d = request.get_json(silent=True) or {}
+        fids = [i for i in d.get("ids") or [] if isinstance(i, str)]
+        title = (d.get("title") or "").strip()
+        if not fids or not title:
+            return jsonify(error="Başlık boş olamaz"), 400
+        rename = bool(d.get("rename")) and organizer.writable(lib)
+        renamed, errors = lib.edit_book(fids, title, d.get("author") or "", rename=rename)
+        return jsonify(ok=True, renamed=renamed, errors=errors)
+
     @app.post("/api/book/ask-ai")
     def book_ask_ai():
         d = request.get_json(silent=True) or {}

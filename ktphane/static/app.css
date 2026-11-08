@@ -327,3 +327,10 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 @media (prefers-color-scheme: dark) { .fav-toggle.on { color: #f0c64f; border-color: #5c4a1a; background: #2c2513; } }
 .books.selecting .fav-btn { display: none; }
 @media (hover: none) { .fav-btn { opacity: .85; } }
+
+/* ---------- başlık düzeltme ---------- */
+.d-info h2 .pen { display: inline-grid; width: 30px; height: 30px; vertical-align: middle; margin-left: 4px; color: var(--muted); }
+.d-info h2 .pen svg { width: 16px; height: 16px; }
+.d-info h2 .pen:hover { color: var(--accent); }
+.title-edit { margin: 0 34px 12px 0; }
+.title-edit .te-preview { margin-top: 6px; overflow-wrap: anywhere; }

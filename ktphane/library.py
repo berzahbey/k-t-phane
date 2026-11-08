@@ -167,12 +167,104 @@ class Library:
     def set_manual(self, ckeys, cat=None, sub=None, lang=None):
         with self._lock:
             for k in ckeys:
-                if not cat and not lang:
-                    self.user_ov.pop(k, None)
+                cur = {kk: vv for kk, vv in self.user_ov.get(k, {}).items() if kk in ("title", "author")}
+                new = {k2: v for k2, v in (("cat", cat), ("sub", sub), ("lang", lang)) if v}
+                if cur or new:
+                    self.user_ov[k] = {**cur, **new}
                 else:
-                    self.user_ov[k] = {k2: v for k2, v in (("cat", cat), ("sub", sub), ("lang", lang)) if v}
+                    self.user_ov.pop(k, None)
             self._version += 1
         self.write_json(self.user_ov_file, self.user_ov)
+
+    # ---------- başlık/yazar düzeltme ve dosya adı ----------
+    def rekey(self, old, new):
+        """Dosya adı değişince içerik anahtarı değişir; bütün kayıtları yeni anahtara taşı."""
+        if old == new:
+            return
+        with self._lock:
+            if old in self.user_ov:
+                self.user_ov[new] = self.user_ov.pop(old)
+            enr = getattr(self, "enricher", None)
+            if enr:
+                if old in enr.data:
+                    enr.data[new] = enr.data.pop(old)
+                if old in enr.priority:
+                    enr.priority.discard(old)
+                    enr.priority.add(new)
+            fav = getattr(self, "favorites", None)
+            if fav and old in fav.keys:
+                fav.keys.discard(old)
+                fav.keys.add(new)
+            dd = getattr(self, "dedupe", None)
+            if dd:
+                for store in (dd.hashes, dd.mids):
+                    if old in store:
+                        store[new] = store.pop(old)
+        for suffix in (".jpg", ".jpg.none"):
+            a, b = os.path.join(self.cover_dir, old + suffix), os.path.join(self.cover_dir, new + suffix)
+            if os.path.exists(a) and not os.path.exists(b):
+                try:
+                    os.replace(a, b)
+                except OSError:
+                    pass
+
+    def edit_book(self, fids, title, author, rename=True):
+        """Başlık/yazarı kalıcı olarak düzeltir; rename=True ise dosyaları 'Yazar - Başlık.ext' yapar."""
+        title, author = (title or "").strip(), (author or "").strip()
+        renamed, errors = [], []
+        for fid in fids:
+            rec = self.get_file(fid)
+            if not rec:
+                continue
+            key = _ckey(rec)
+            with self._lock:
+                cur = dict(self.user_ov.get(key, {}))
+                cur.update(title=title, author=author)
+                self.user_ov[key] = cur
+                self._version += 1
+            if not rename or not title:
+                continue
+            stem = f"{author} - {title}" if author else title
+            stem = re.sub(r'[\\/:*?"<>|]+', " ", stem)
+            stem = re.sub(r"\s+", " ", stem).strip(" .")[:180]
+            new_name = stem + "." + rec["ext"]
+            if new_name == rec["name"]:
+                continue
+            folder = os.path.dirname(rec["path"])
+            dst = os.path.join(self.book_dir, folder, new_name)
+            i = 2
+            while os.path.exists(dst):
+                dst = os.path.join(self.book_dir, folder, f"{stem} ({i}).{rec['ext']}")
+                i += 1
+            try:
+                os.rename(self.abs_path(rec), dst)
+            except OSError as e:
+                errors.append(f"{rec['name']}: {e}")
+                continue
+            new_rel = os.path.relpath(dst, self.book_dir)
+            new_rec = {**rec, "path": new_rel, "name": os.path.basename(dst), "id": _fid(new_rel)}
+            new_key = _ckey(new_rec)
+            self.rekey(key, new_key)
+            with self._lock:
+                self.files.pop(fid, None)
+                self.files[new_rec["id"]] = new_rec
+                placed = self.org.get("placed", {})
+                if rec["path"] in placed:
+                    placed[new_rel] = placed.pop(rec["path"])
+                self._version += 1
+            renamed.append({"from": rec["path"], "to": new_rel, "id": new_rec["id"]})
+        self.write_json(self.user_ov_file, self.user_ov)
+        try:
+            self._save_cache()
+            self.save_org()
+            if getattr(self, "enricher", None):
+                self.enricher.save()
+            if getattr(self, "favorites", None):
+                self.favorites._save()
+                self.favorites.sync()
+        except OSError:
+            pass
+        return renamed, errors
 
     def set_pref(self, key, value):
         with self._lock:
@@ -381,9 +473,14 @@ class Library:
                 fixed.append(f)
             files = fixed
         for f in files:
+            # elle düzeltilmiş başlık/yazar her şeyden önce gelir
+            ov = self.user_ov.get(_ckey(f))
+            if ov and (ov.get("title") or ov.get("author")):
+                f = {**f, "title": ov.get("title") or f["title"], "author": ov.get("author", f["author"]),
+                     "_named": True}
             # EPUB içindeki başlıkta cilt numarası yoksa ama dosya adında varsa ("Mesnevi Cilt 2.epub"
             # içinde başlık sadece "Mesnevi") ciltler tek kitapta birleşmesin
-            if split_volume(f["title"])[0] is None:
+            elif split_volume(f["title"])[0] is None:
                 fn_title, _ = parse_filename(f["name"])
                 _, n = split_volume(fn_title)
                 if n:
@@ -394,7 +491,7 @@ class Library:
                 g = groups[key] = {"id": f["id"], "title": f["title"], "author": f["author"],
                                    "formats": [], "subjects": [], "folders": f["folders"],
                                    "description": "", "year": "", "publisher": "",
-                                   "added": 0, "lang_code": ""}
+                                   "added": 0, "lang_code": "", "named": bool(f.get("_named"))}
             fmt = {k: f[k] for k in ("id", "ext", "size", "pages", "needs_ocr", "broken", "path", "name")}
             fmt["ckey"] = _ckey(f)
             a = self.enricher.get(fmt["ckey"]) if getattr(self, "enricher", None) else None
@@ -505,7 +602,7 @@ class Library:
             lang = body["lang"]
         g["language"] = lang or detect_language(f"{g['title']} {g['author']}", g["lang_code"])
 
-        if ai:  # yapay zeka başlık/yazarı yalnızca eksik veya anlamsız olanı düzeltir
+        if ai and not g.get("named"):  # yapay zeka başlık/yazarı yalnızca eksik veya anlamsız olanı düzeltir
             if not g["author"] and ai.get("author"):
                 g["author"] = ai["author"]
             if _looks_junk(g["title"]) and ai.get("title"):

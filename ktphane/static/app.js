@@ -325,7 +325,14 @@
     }).join("");
     const ocrHint = b.formats.some((f) => f.ext === "pdf" && f.needs_ocr) ? `<p class="muted" style="font-size:12.5px">Bu PDF taranmış görüntüden oluşuyor; metin seçilemez ve aranamaz. İleride OCR ile metne çevrilebilir.</p>` : "";
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(b, false)}<div class="d-info">
-      <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
+      <div class="title-view"><h2${dir}>${esc(b.title)}<button class="icon-btn pen" data-edit-title title="Başlığı ve yazarı düzelt"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button></h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div></div>
+      <form class="title-edit" hidden data-ids="${b.formats.map((f) => f.id).join(",")}" data-exts="${b.formats.map((f) => f.ext).join(",")}">
+        <label class="field"><span>Başlık</span><input name="title" value="${esc(b.title)}" required></label>
+        <label class="field"><span>Yazar</span><input name="author" value="${esc(b.author)}"></label>
+        <label class="switch" style="margin-top:10px"><input type="checkbox" name="rename" checked>Sunucudaki dosya adını da değiştir</label>
+        <div class="muted small te-preview"></div>
+        <div class="org-actions"><button class="btn primary sm" type="submit">Kaydet</button><button class="btn sm" type="button" data-cancel-edit>Vazgeç</button></div>
+      </form>
       <button class="btn sm fav-toggle ${b.favorite ? "on" : ""}" data-fav="${b.formats.map((f) => f.ckey).join(",")}" data-on="${b.favorite ? 1 : 0}"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>${b.favorite ? "Favorilerde" : "Favorilere ekle"}</button>
       ${b.description ? `<p class="d-desc">${esc(b.description)}</p>` : ""}
       <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div>
@@ -461,6 +468,37 @@
   }
   $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
   $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+  // ---------- başlık / yazar düzeltme ----------
+  const fe = (form, name) => form.elements.namedItem(name);
+  function safeName(t) { return t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim(); }
+  function tePreview(form) {
+    const t = fe(form, "title").value.trim(), a = fe(form, "author").value.trim();
+    const stem = safeName(a ? `${a} - ${t}` : t);
+    const exts = [...new Set(form.dataset.exts.split(","))];
+    form.querySelector(".te-preview").textContent = fe(form, "rename").checked && t ? "Yeni dosya adı: " + exts.map((e) => `${stem}.${e}`).join(", ") : "Dosya adı değişmez; sadece uygulamada görünen ad düzelir.";
+  }
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-edit-title]")) {
+      const body = e.target.closest(".d-info"); body.querySelector(".title-view").hidden = true;
+      const f = body.querySelector(".title-edit"); f.hidden = false; tePreview(f); fe(f, "title").focus(); fe(f, "title").select();
+    } else if (e.target.closest("[data-cancel-edit]")) {
+      const body = e.target.closest(".d-info"); body.querySelector(".title-view").hidden = false; body.querySelector(".title-edit").hidden = true;
+    }
+  });
+  document.addEventListener("input", (e) => { const f = e.target.closest(".title-edit"); if (f) tePreview(f); });
+  document.addEventListener("submit", async (e) => {
+    const f = e.target.closest(".title-edit"); if (!f) return;
+    e.preventDefault();
+    try {
+      const d = await post("/api/book/edit", { ids: f.dataset.ids.split(","), title: fe(f, "title").value, author: fe(f, "author").value, rename: fe(f, "rename").checked });
+      toast(d.errors && d.errors.length ? "Kaydedildi ama dosya adı değiştirilemedi: " + d.errors[0] : d.renamed.length ? `Kaydedildi, ${d.renamed.length} dosyanın adı değişti` : "Kaydedildi");
+      await load();
+      const first = d.renamed.length ? d.renamed[0].id : f.dataset.ids.split(",")[0];
+      const book = state.books.find((b) => b.formats.some((x) => x.id === first));
+      if (book) openDetail(book.id); else $("#detail").close();
+    } catch (er) { toast("Olmadı: " + er.message); }
+  });
 
   // ---------- favoriler ----------
   async function setFavorite(ckeys, on) {
