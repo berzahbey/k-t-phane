@@ -175,6 +175,7 @@ def create_app():
         groups = lib.dedupe.find()
         active = [g for g in groups if not g["ignored"]]
         return jsonify(groups=groups, auto=bool(lib.dedupe.state.get("auto")),
+                       auto_formats=bool(lib.dedupe.state.get("auto_formats")),
                        count=len(active), extra=sum(len(g["files"]) - 1 for g in active),
                        different=getattr(lib.dedupe, "different", []))
 
@@ -191,9 +192,11 @@ def create_app():
     @app.post("/api/duplicates/auto")
     def dup_auto():
         d = request.get_json(silent=True) or {}
-        lib.dedupe.state["auto"] = bool(d.get("on")) and d.get("confirm") == "KALICI-SIL"
+        which = "auto_formats" if d.get("which") == "formats" else "auto"
+        lib.dedupe.state[which] = bool(d.get("on")) and d.get("confirm") == "KALICI-SIL"
         lib.dedupe.save_state()
-        return jsonify(auto=lib.dedupe.state["auto"])
+        return jsonify(auto=lib.dedupe.state.get("auto"), auto_formats=lib.dedupe.state.get("auto_formats"),
+                       on=lib.dedupe.state[which])
 
     # ---------- elle düzeltme / Gemini'ye sor ----------
     @app.post("/api/book/category")

@@ -256,3 +256,64 @@ def mid_text(ext, path, limit=4000):
             out += (r.pages[i].extract_text() or "") + " "
         return WS_RE.sub(" ", out).strip()[:limit] if text_layer_ok(out) else ""
     return ""
+
+
+def book_stats(ext, path):
+    """Kitabın ne kadar eksiksiz olduğunu karşılaştırmak için metin uzunluğu tahmini.
+    {'chars': int, 'estimated': bool, 'pages': int|None}"""
+    if ext == "epub":
+        total = 0
+        with zipfile.ZipFile(path) as z:
+            for n in z.namelist():
+                if n.lower().endswith((".xhtml", ".html", ".htm")):
+                    try:
+                        total += len(_clean(z.read(n).decode("utf-8", "ignore")))
+                    except Exception:
+                        pass
+        return {"chars": total, "estimated": False, "pages": None}
+    if ext == "pdf":
+        from pypdf import PdfReader
+        r = PdfReader(path, strict=False)
+        if r.is_encrypted:
+            r.decrypt("")
+        n = len(r.pages)
+        if not n:
+            return {"chars": 0, "estimated": True, "pages": 0}
+        idx = sorted({min(n - 1, int(n * k / 6)) for k in range(1, 6)})
+        txt = ""
+        for i in idx:
+            try:
+                txt += (r.pages[i].extract_text() or "") + " "
+            except Exception:
+                pass
+        if text_layer_ok(txt):
+            return {"chars": int(len(txt.strip()) / len(idx) * n), "estimated": True, "pages": n}
+        return {"chars": n * 1800, "estimated": True, "pages": n, "scanned": True}  # taranmış: sayfa başına ortalama
+    if ext == "txt":
+        return {"chars": os.path.getsize(path), "estimated": False, "pages": None}
+    return {"chars": 0, "estimated": True, "pages": None, "unknown": True}
+
+
+_VOWELS = set("aeiouıöüâîûy")
+
+
+def text_quality(text):
+    """Metnin ne kadar düzgün olduğu (0..1). Kötü OCR'da kelimeler birbirine girer ("birbirinegirmiş"),
+    anlamsız harf yığınları ve bağlaç/edat eksikliği olur. Az metin varsa None.
+    Arap harfli metinde ölçülmez (None)."""
+    sample = (text or "")[:6000]
+    letters = [c for c in sample if c.isalpha()]
+    if len(letters) < 300:
+        return None
+    if sum(1 for c in letters if ARABIC_RE.match(c)) / len(letters) > 0.5:
+        return None
+    toks = words(sample)
+    if len(toks) < 60:
+        return None
+    wordlike = sum(1 for t in toks if t.isalpha() and 2 <= len(t) <= 16 and any(c in _VOWELS for c in t)) / len(toks)
+    stop = sum(1 for t in toks if t in _ALL_STOP) / len(toks)
+    longjunk = sum(1 for t in toks if len(t) > 20) / len(toks)
+    content_toks = [t for t in toks if t not in _ALL_STOP]
+    short = sum(1 for t in content_toks if len(t) <= 3) / max(1, len(content_toks))  # hecelere bölünmüş kelimeler
+    q = 0.6 * wordlike + 0.4 * min(1.0, stop / 0.10) - 2 * longjunk - 1.5 * max(0.0, short - 0.3)
+    return round(max(0.0, min(1.0, q)), 2)

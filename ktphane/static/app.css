@@ -334,3 +334,8 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .d-info h2 .pen:hover { color: var(--accent); }
 .title-edit { margin: 0 34px 12px 0; }
 .title-edit .te-preview { margin-top: 6px; overflow-wrap: anywhere; }
+
+.dup-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.dup-tag.prot { background: var(--warn-soft); color: var(--warn); max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-file.protected.del .dup-tag.del { display: none; }
+.dup-file.protected.del .dup-path { text-decoration: none; color: var(--text); }

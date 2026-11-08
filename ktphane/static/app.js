@@ -620,7 +620,7 @@
   });
 
   // ---------- kopyalar ----------
-  let dupData = null;
+  let dupData = null, dupTab = "all";
   async function loadDupes() {
     const d = await fetch("/api/duplicates", { cache: "no-store" }).then((r) => r.json());
     dupData = d;
@@ -630,11 +630,18 @@
   function dupRender() {
     const d = dupData, box = $("#dupContent");
     const active = d.groups.filter((g) => !g.ignored), ignored = d.groups.filter((g) => g.ignored);
-    let h = `<div class="org-actions" style="margin-top:0"><label class="switch"><input type="checkbox" id="dupAuto" ${d.auto ? "checked" : ""}>Yeni eklenen <b>kesin</b> kopyaları otomatik sil (iyi olan kalır)</label></div>`;
+    const nFmt = active.filter((g) => g.kind === "format").length, nDup = active.length - nFmt;
+    let h = `<div class="dup-tabs"><button class="chip ${dupTab === "all" ? "on" : ""}" data-dtab="all">Hepsi <span class="n">${active.length}</span></button>
+      <button class="chip ${dupTab === "dup" ? "on" : ""}" data-dtab="dup">Aynı format kopyaları <span class="n">${nDup}</span></button>
+      <button class="chip ${dupTab === "format" ? "on" : ""}" data-dtab="format">Farklı formatlar (EPUB/PDF…) <span class="n">${nFmt}</span></button></div>
+      <div class="org-actions" style="margin-top:8px;flex-direction:column;align-items:flex-start;gap:8px">
+      <label class="switch"><input type="checkbox" class="dup-auto" data-which="dup" ${d.auto ? "checked" : ""}>Yeni eklenen <b>kesin</b> kopyaları otomatik sil (iyi olan kalır)</label>
+      <label class="switch"><input type="checkbox" class="dup-auto" data-which="formats" ${d.auto_formats ? "checked" : ""}>Yeni eklenen kitaplarda <b>en iyi formatı</b> tut, diğer formatları otomatik sil</label></div>`;
     if (!active.length) h += `<div class="org-card ok">Kopya kitap yok. ✓</div>`;
     else h += `<div class="org-card"><b>${active.length}</b> kitapta <b>${d.extra}</b> fazla dosya var.
       <span class="muted">Kesin kopyalar önceden işaretli; “muhtemel” olanlar farklı baskı veya çeviri olabilir, kontrol edip işaretleyin.</span></div>`;
-    h += `<div class="dup-list">` + active.map((g) => dupGroupHtml(g)).join("") + `</div>`;
+    const shown = active.filter((g) => dupTab === "all" || (dupTab === "format" ? g.kind === "format" : g.kind !== "format"));
+    h += `<div class="dup-list">` + shown.map((g) => dupGroupHtml(g)).join("") + `</div>`;
     if (active.length) h += `<div class="org-actions dup-foot"><button class="linkish" id="dupAll">Tümünü işaretle</button><span class="grow"></span><button class="btn danger-solid" id="dupDelete"></button></div>`;
     if (d.different && d.different.length) h += `<details class="dup-ign"><summary>Adı benzeyen ama içeriği farklı çıkan ${d.different.length} çift (kopya sayılmadı)</summary>
       <p class="muted small">Metinleri karşılaştırıldı ve büyük ölçüde farklı: büyük ihtimalle başka bir çeviri veya baskı.</p>` +
@@ -662,33 +669,37 @@
       const ok = await deleteFiles(ids, "Kopya kitaplar", `${ids.length} kopya dosya (her grupta “Kalsın” işaretli olan kalacak)`);
       if (ok) { await loadDupes(); dupRender(); }
     });
-    $("#dupAuto").addEventListener("change", async (e) => {
-      const on = e.target.checked;
+    box.querySelectorAll("[data-dtab]").forEach((b) => b.addEventListener("click", () => { dupTab = b.dataset.dtab; dupRender(); }));
+    box.querySelectorAll(".dup-auto").forEach((cb) => cb.addEventListener("change", async (e) => {
+      const on = e.target.checked, fmt = cb.dataset.which === "formats";
       if (on) {
-        const ok1 = await ask({ step: "1 / 2", title: "Otomatik kopya temizliği açılsın mı?", body: "Her taramadan sonra <b>kesin</b> kopyalarda (birebir aynı dosya veya aynı kitabın aynı sayfa sayılı PDF'i) iyi olan kalacak, diğeri silinecek. “Muhtemel” kopyalara dokunulmaz.", ok: "Aç" });
+        const ok1 = await ask({ step: "1 / 2", title: fmt ? "En iyi format otomatik seçilsin mi?" : "Otomatik kopya temizliği açılsın mı?",
+          body: fmt ? "Yeni eklenen her kitabın farklı formatları (EPUB, PDF, MOBI…) karşılaştırılacak; <b>içeriği aynı olduğu doğrulanan</b> kopyalardan en iyisi kalacak, diğerleri silinecek.<br><br>Korunan dosyalar asla silinmez: <b>daha eksiksiz</b> olan, <b>favoriler</b>, <b>dili farklı</b> olan ve içeriği karşılaştırılamayan." :
+            "Her taramadan sonra <b>kesin</b> kopyalarda (birebir aynı dosya veya içeriği %80+ aynı) iyi olan kalacak, diğeri silinecek. “Muhtemel” kopyalara dokunulmaz.", ok: "Aç" });
         const ok2 = ok1 && await ask({ step: "2 / 2", title: "Emin misiniz?", body: "Otomatik silinen dosyalar <b>kalıcı olarak</b> silinir, geri getirilemez. Silinenler /data/silinenler-kaydi.json dosyasına not edilir.", ok: "Evet, otomatik sil" });
         if (!ok2) { e.target.checked = false; return; }
       }
-      const r = await fetch("/api/duplicates/auto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on, confirm: "KALICI-SIL" }) }).then((r) => r.json());
-      e.target.checked = r.auto; toast(r.auto ? "Otomatik kopya temizliği açık" : "Otomatik kopya temizliği kapalı");
-    });
+      const r = await post("/api/duplicates/auto", { on, which: fmt ? "formats" : "dup", confirm: "KALICI-SIL" });
+      e.target.checked = r.on; toast(r.on ? "Otomatik temizlik açık" : "Otomatik temizlik kapalı");
+    }));
   }
   function dupGroupHtml(g) {
-    const pre = g.kind === "kesin" && !g.pending;
+    const pre = (g.kind === "kesin" || g.kind === "format") && g.auto_ok;
     return `<div class="dup-group" data-key="${esc(g.key)}"><div class="dup-head">
       <label class="dup-check"><input type="checkbox" ${pre ? "checked" : ""}></label>
       <div class="dup-title"><b>${esc(g.title)}</b>${g.author ? ` <span class="muted">· ${esc(g.author)}</span>` : ""}
-        <div class="small"><span class="badge ${g.kind === "kesin" ? "broken" : "ocr"}">${g.kind === "kesin" ? "Kesin kopya" : "Muhtemel kopya"}</span> <span class="muted">${esc(g.reason)}${g.pending ? " · analiz bekleniyor" : ""}</span></div></div>
+        <div class="small"><span class="badge ${g.kind === "kesin" ? "broken" : g.kind === "format" ? "epub" : "ocr"}">${g.kind === "kesin" ? "Kesin kopya" : g.kind === "format" ? "Format kopyası" : "Muhtemel kopya"}</span> <span class="muted">${esc(g.reason)}${g.pending ? " · analiz bekleniyor" : ""}</span></div></div>
       <button class="linkish" data-ignore="${esc(g.key)}" title="Bu grup bir daha önerilmesin">Kopya değil</button></div>` +
-      g.files.map((f, i) => `<label class="dup-file ${f.keep ? "" : "del"}"><input type="radio" name="keep-${esc(g.key)}" value="${f.id}" ${f.keep ? "checked" : ""}>
-        <span class="dup-file-main"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="muted small">${esc(f.why)}${f.sim != null ? ` · içerik %${Math.round(f.sim * 100)} aynı` : ""}</span></span>
+      g.files.map((f, i) => `<label class="dup-file ${f.keep ? "" : "del"} ${f.protect ? "protected" : ""}"><input type="radio" name="keep-${esc(g.key)}" value="${f.id}" data-protect="${f.protect ? 1 : 0}" ${f.keep ? "checked" : ""}>
+        <span class="dup-file-main"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="muted small">${esc(f.why)}${f.keep ? "" : f.sim != null ? ` · içerik %${Math.round(f.sim * 100)} aynı` : " · içerik karşılaştırılamadı"}</span></span>
+        ${f.protect ? `<span class="dup-tag prot" title="${esc(f.protect)}">Korunuyor: ${esc(f.protect)}</span>` : ""}
         <span class="dup-tag keep">Kalsın</span><span class="dup-tag del">Silinecek</span></label>`).join("") + `</div>`;
   }
   function dupSelectedIds() {
     const ids = [];
     document.querySelectorAll("#dupContent .dup-group").forEach((g) => {
       if (!g.querySelector(".dup-head input[type=checkbox]").checked) return;
-      g.querySelectorAll(".dup-file").forEach((row) => { const r = row.querySelector("input[type=radio]"); if (!r.checked) ids.push(r.value); });
+      g.querySelectorAll(".dup-file").forEach((row) => { const r = row.querySelector("input[type=radio]"); if (!r.checked && r.dataset.protect !== "1") ids.push(r.value); });
     });
     return ids;
   }

@@ -41,6 +41,11 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   Kitap klasöründe `Favoriler/` klasörü oluşur. İçindekiler kopya değil sabit bağlantıdır (ek yer kaplamaz,
   asıl dosya taşınsa da çalışır); koleksiyonlar alt klasörde durur. Favoriden çıkarılan veya silinen kitabın
   bağlantısı kaldırılır; klasöre elle konan dosyalara dokunulmaz.
+- **Farklı formatlar**: Aynı kitabın EPUB/PDF/MOBI kopyalarından en iyisi kalır. İçerik karşılaştırmasıyla
+  aynı kitap olduğu doğrulanır; içerik aynıysa EPUB, PDF'lerde metin tabanlı olan tercih edilir; metni bozuk
+  OCR'lı (kelimeler birbirine girmiş/hecelere bölünmüş) dosya yerine taranmış (orijinal sayfa) olan, eksik
+  yerine eksiksiz olan kalır. Daha eksiksiz görünen, favori ve dili farklı olan dosyalar asla silinmez.
+  İstenirse yeni eklenen kitaplara otomatik uygulanır (iki aşamalı onayla açılır).
 - **Toplu seçim**: “Seç” ile kitaplar/koleksiyonlar işaretlenir; “Görünenlerin tümünü seç” filtre ve aramayla
   birlikte çalışır; “Seçilenleri sil” aynı iki aşamalı onayla toplu siler.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.

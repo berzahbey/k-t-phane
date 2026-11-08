@@ -28,6 +28,9 @@ class Dedupe:
         self.state = self._load(self.state_file, {"auto": False, "ignored": []})
         self.mid_file = os.path.join(lib.data_dir, "orta-metin.json")
         self.mids = self._load(self.mid_file, {})  # ckey -> kitabın ortasından metin örneği
+        self.stats_file = os.path.join(lib.data_dir, "kitap-olcu.json")
+        self.stats = self._load(self.stats_file, {})  # ckey -> {"chars", "estimated", "pages"}
+        self.state.setdefault("auto_formats", False)
 
     @staticmethod
     def _load(path, default):
@@ -142,6 +145,12 @@ class Dedupe:
                     kind, reason = "kesin", "Aynı kitap, kopyalardan biri bozuk"
                 groups[f"b:{b['id']}:{ext}"] = {"kind": kind, "reason": reason, "files": fs}
 
+        # 2c) aynı kitabın farklı formatları (EPUB + PDF + MOBI ...)
+        for b in books:
+            if len({f["ext"] for f in b["formats"]}) > 1:
+                groups[f"x:{b['id']}"] = {"kind": "format", "files": list(b["formats"]),
+                                          "reason": "Aynı kitabın farklı formatları"}
+
         # 2b) benzer kitaplar: yazım hatası ("Muvazeneleri"/"Muvazeleleri"), başlığa eklenmiş yazar adı
         #     ("El Muvafakat Şatıbi"/"El-Muvâfakât"), parantez/alt başlık/yıl farkı, ortak yazar
         n = 0
@@ -172,74 +181,194 @@ class Dedupe:
             for f in g["files"]:
                 m["files"][f["id"]] = f
         groups = {sorted(m["keys"])[0]: {"kind": "kesin" if m["kinds"] == {"kesin"} else "muhtemel",
+                                         "exact": m["kinds"] == {"kesin"} and all(k.startswith("h:") for k in m["keys"]),
                                          "reason": " · ".join(m["reasons"]), "files": list(m["files"].values())}
                   for m in merged.values()}
 
         ignored = set(self.state.get("ignored", []))
         out = []
         self.different = []  # adı benzeyip içeriği farklı çıkanlar (kullanıcıya bilgi için)
-        mids_changed = False
+        self._dirty_cache = False
+        fav = getattr(self.lib, "favorites", None)
+        fav_keys = fav.keys if fav else set()
         for key, g in groups.items():
-            scored = []
-            for f in g["files"]:
-                sc, why = self.score(f, placed)
-                scored.append({"id": f["id"], "path": f["path"], "name": f["name"], "ext": f["ext"],
-                               "size": f["size"], "pages": f.get("pages"), "needs_ocr": f.get("needs_ocr"),
-                               "broken": f.get("broken"), "score": sc, "why": why, "ckey": f["ckey"]})
-            scored.sort(key=lambda x: (-x["score"], -x["size"], x["path"]))
-            exact_only = g["reason"] == "Birebir aynı dosya"
-            kind, reason = g["kind"], g["reason"]
-            if not exact_only:
-                # İÇERİK KARŞILAŞTIRMASI: en iyi dosyanın metniyle diğerlerininki
-                ref = next((x for x in scored if not x["broken"]), scored[0])
-                ref_sh, mids_changed = self._shingles(ref, mids_changed)
-                kept = [ref]
-                sims = []
-                for x in scored:
-                    if x is ref:
-                        continue
-                    if x["broken"]:
-                        x["sim"] = None
-                        kept.append(x)
-                        continue
-                    sh, mids_changed = self._shingles(x, mids_changed)
-                    sim = _containment(ref_sh, sh)
-                    x["sim"] = sim
-                    if sim is not None and sim < 0.15:
-                        # metin farklı: başka çeviri/baskı ya da başka kitap -> kopya değil
-                        bx, br = fmt_book.get(x["id"]) or {}, fmt_book.get(ref["id"]) or {}
-                        self.different.append({"a": br.get("title", ""), "a_author": br.get("author", ""),
-                                               "a_path": ref["path"], "b": bx.get("title", ""),
-                                               "b_author": bx.get("author", ""), "b_path": x["path"], "sim": sim})
-                        continue
-                    kept.append(x)
-                    sims.append(sim)
-                if len(kept) < 2:
-                    continue
-                scored = kept
-                known = [v for v in sims if v is not None]
-                if known and min(known) >= 0.8 and len(known) == len(sims):
-                    kind = "kesin"
-                    reason = f"İçerik aynı (%{int(min(known) * 100)} eşleşme)"
-                elif known:
-                    kind = "muhtemel"
-                    reason = f"İçerik kısmen benzer (%{int(min(known) * 100)}) — farklı baskı olabilir"
-                else:
-                    kind = "muhtemel"
-                    reason = "İçerik karşılaştırılamadı (metin okunamadı) — " + g["reason"]
-            scored[0]["keep"] = True
-            pending = not exact_only and any(x["ext"] == "pdf" and x["needs_ocr"] is None and not x["broken"] for x in scored)
-            b = fmt_book.get(scored[0]["id"]) or {}
-            out.append({"key": key, "kind": kind, "reason": reason, "title": b.get("title", ""),
-                        "author": b.get("author", ""), "files": scored, "pending": pending,
-                        "ignored": key in ignored})
-        if mids_changed:
+            res = self._evaluate(key, g, fmt_book, placed, fav_keys)
+            if res:
+                res["ignored"] = key in ignored
+                out.append(res)
+        if self._dirty_cache:
             try:
                 self._save(self.mid_file, self.mids)
+                self._save(self.stats_file, self.stats)
             except OSError:
                 pass
-        out.sort(key=lambda g: (g["ignored"], g["kind"] != "kesin", g["title"].casefold()))
+        order = {"kesin": 0, "format": 1, "muhtemel": 2}
+        out.sort(key=lambda g: (g["ignored"], order.get(g["kind"], 3), g["title"].casefold()))
         return out
+
+    # ---------- bir grubu değerlendir: en iyisi, koruma kuralları, içerik doğrulaması ----------
+    def _evaluate(self, key, g, fmt_book, placed, fav_keys):
+        files = g["files"]
+        exts = {f["ext"] for f in files}
+        multi = len(exts) > 1
+        enr = getattr(self.lib, "enricher", None)
+        ana = {f["id"]: ((enr.get(f["ckey"]) or {}) if enr else {}) for f in files}
+        st = {f["id"]: self._stats(f) for f in files}
+        known = [v["chars"] for v in st.values() if v and v.get("chars") and not v.get("unknown")]
+        max_chars = max(known) if known else 0
+
+        scored = []
+        for f in files:
+            sc, why = self.quality(f, st[f["id"]], max_chars, ana[f["id"]], placed, f["ckey"] in fav_keys)
+            scored.append({"id": f["id"], "path": f["path"], "name": f["name"], "ext": f["ext"],
+                           "size": f["size"], "pages": f.get("pages") or (st[f["id"]] or {}).get("pages"),
+                           "needs_ocr": f.get("needs_ocr"), "broken": f.get("broken"), "score": sc, "why": why,
+                           "ckey": f["ckey"], "chars": (st[f["id"]] or {}).get("chars"),
+                           "lang": ana[f["id"]].get("lang"), "favorite": f["ckey"] in fav_keys})
+        scored.sort(key=lambda x: (-x["score"], -x["size"], x["path"]))
+        keep = scored[0]
+        if keep["broken"]:
+            return None  # sağlam dosya yok; elle bakılmalı
+
+        exact = g.get("exact")
+        kept = [keep]
+        sims = []
+        ref_sh = None if exact else self._shingles(keep)
+        for x in scored[1:]:
+            if exact:
+                x["sim"] = 1.0
+            elif x["broken"]:
+                x["sim"] = None
+            else:
+                x["sim"] = _containment(ref_sh, self._shingles(x))
+                if x["sim"] is not None and x["sim"] < 0.15:
+                    bx, br = fmt_book.get(x["id"]) or {}, fmt_book.get(keep["id"]) or {}
+                    self.different.append({"a": br.get("title", ""), "a_author": br.get("author", ""),
+                                           "a_path": keep["path"], "b": bx.get("title", ""),
+                                           "b_author": bx.get("author", ""), "b_path": x["path"], "sim": x["sim"]})
+                    continue  # metin farklı: başka çeviri/baskı/kitap -> kopya değil
+            # --- koruma kuralları: daha iyi olabilecek dosya silinmez ---
+            prot = []
+            if x["favorite"] and not keep["favorite"]:
+                prot.append("favorilerde")
+            if (x.get("chars") and keep.get("chars") and not x["broken"]
+                    and x["chars"] > keep["chars"] * 1.25):
+                prot.append(f"daha eksiksiz görünüyor (%{int((x['chars'] / keep['chars'] - 1) * 100)} daha uzun)")
+            if x.get("lang") and keep.get("lang") and x["lang"] != keep["lang"] and not x["broken"]:
+                prot.append(f"dili farklı ({x['lang']})")
+            if prot:
+                x["protect"] = ", ".join(prot)
+            kept.append(x)
+            if not prot:
+                sims.append(x["sim"])
+        if len(kept) < 2:
+            return None
+        keep["keep"] = True
+
+        deletable = [x for x in kept[1:] if not x.get("protect")]
+        verified = [v for v in sims if v is not None]
+        shown = [x["sim"] for x in kept[1:] if x.get("sim") is not None]
+        thr = 0.5 if multi else 0.8
+        auto_ok = bool(deletable) and (exact or (len(verified) == len(sims) and min(verified, default=0) >= thr)
+                                       or all(x["broken"] for x in deletable))
+        if exact:
+            kind, reason = "kesin", "Birebir aynı dosya"
+        elif multi:
+            kind = "format"
+            reason = ("Aynı kitap, farklı formatlar — " +
+                      (f"içerik %{int(min(shown) * 100)} aynı" if shown else "içerik karşılaştırılamadı"))
+        elif verified and min(verified) >= 0.8 and len(verified) == len(sims):
+            kind, reason = "kesin", f"İçerik aynı (%{int(min(verified) * 100)} eşleşme)"
+        elif verified:
+            kind, reason = "muhtemel", f"İçerik kısmen benzer (%{int(min(verified) * 100)}) — farklı baskı olabilir"
+        else:
+            kind, reason = "muhtemel", "İçerik karşılaştırılamadı (metin okunamadı) — " + g["reason"]
+        pending = not exact and any(x["ext"] == "pdf" and x["needs_ocr"] is None and not x["broken"] for x in kept)
+        b = fmt_book.get(keep["id"]) or {}
+        return {"key": key, "kind": kind, "reason": reason, "title": b.get("title", ""),
+                "author": b.get("author", ""), "files": kept, "pending": pending, "auto_ok": auto_ok and not pending}
+
+    # ---------- kalite puanı (formatlar arası) ----------
+    BASE = {"epub": 300, "pdf": 260, "azw3": 160, "azw": 150, "mobi": 150, "fb2": 140, "djvu": 120, "djv": 120,
+            "cbz": 100, "cbr": 100, "txt": 90, "docx": 80, "doc": 70, "odt": 70, "rtf": 60}
+
+    def quality(self, f, st, max_chars, a, placed, favorite):
+        """(puan, açıklama). Yüksek = daha iyi.
+        Format, okunabilir metin, EKSİKSİZLİK (en uzun kopyaya oranla), yapı ve hatalar."""
+        if f.get("broken"):
+            return -1000, "bozuk / açılamıyor"
+        why = []
+        s = self.BASE.get(f["ext"], 50)
+        from .content import text_quality
+        q = None if a.get("ocr") else text_quality(a.get("sample") or "")
+        if f["ext"] == "pdf":
+            if f.get("needs_ocr") is True or (st or {}).get("scanned"):
+                s -= 120
+                why.append("taranmış PDF" + (" (metin katmanı anlamsız)" if f.get("bad_text_layer") else ""))
+            elif f.get("needs_ocr") is False:
+                why.append("metin tabanlı PDF")
+        else:
+            why.append(f["ext"].upper())
+        # metnin düzgünlüğü: bozuk OCR'lı metin tabanlı PDF, orijinal sayfa görüntülü taranmış
+        # PDF'in gerisinde kalır; metni çok bozuk EPUB de düzgün PDF'in gerisinde kalır
+        if q is not None:
+            if q < 0.6:
+                s -= 300
+                why.append(f"metni çok bozuk (kalite %{int(q * 100)})")
+            elif q < 0.8:
+                s -= 80
+                why.append(f"metinde bozukluklar var (kalite %{int(q * 100)})")
+        chars = (st or {}).get("chars")
+        if chars and max_chars and not (st or {}).get("unknown"):
+            ratio = chars / max_chars
+            s += 250 * ratio
+            why.append("eksiksiz" if ratio >= 0.95 else f"metnin ~%{int(ratio * 100)}'i")
+        else:
+            s += 150
+        if f["ext"] == "epub":
+            if a.get("toc"):
+                s += 30
+                why.append("içindekiler var")
+            rec = self.lib.get_file(f["id"]) or {}
+            if rec.get("cover_member"):
+                s += 20
+                why.append("kapak var")
+        pages = f.get("pages") or (st or {}).get("pages")
+        if pages:
+            why.append(f"{pages} sayfa")
+        if f.get("error") or a.get("error"):
+            s -= 100
+            why.append("okuma hatası")
+        if favorite:
+            s += 40
+            why.append("favori")
+        if f["path"] in placed:
+            s += 5
+        s += min(f["size"] / (1 << 20), 20) * 0.5
+        why.append(_size(f["size"]))
+        return round(s, 1), ", ".join(why)
+
+    def _stats(self, f):
+        """Kitap uzunluğu tahmini (ayrı süreçte, zaman aşımıyla); önbelleğe alınır."""
+        import subprocess
+        import sys
+        k = f["ckey"]
+        if k in self.stats:
+            return self.stats[k]
+        res = None
+        if not f.get("broken"):
+            try:
+                r = subprocess.run([sys.executable, "-m", "ktphane.worker", self.lib.abs_path(f), f["ext"], "stats"],
+                                   capture_output=True, text=True, timeout=90,
+                                   cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                res = json.loads(r.stdout or "{}") or None
+                if res and res.get("error"):
+                    res = None
+            except Exception as e:
+                log.info("Uzunluk ölçülemedi %s: %s", f["path"], e)
+        self.stats[k] = res
+        self._dirty_cache = True
+        return res
 
     # ---------- içerik parmak izi ----------
     def _mid(self, f):
@@ -260,25 +389,36 @@ class Dedupe:
         self.mids[k] = text[:4000]
         return self.mids[k], True
 
-    def _shingles(self, f, changed):
+    def _shingles(self, f):
         a = (self.lib.enricher.get(f["ckey"]) or {}) if getattr(self.lib, "enricher", None) else {}
         mid, new = self._mid(f) if f["ext"] in ("epub", "pdf") else ("", False)
+        if new:
+            self._dirty_cache = True
         text = (a.get("sample") or "") + " " + mid
-        return _shingle_set(text), changed or new
+        return _shingle_set(text)
 
     def auto_clean(self):
-        """Otomatik mod: yalnızca 'kesin' kopyalar, analizi bitmiş ve yok sayılmamış olanlar."""
-        if not self.state.get("auto"):
+        """Otomatik mod (iki ayrı ayar):
+        auto          — aynı formattaki kesin kopyalar
+        auto_formats  — aynı kitabın farklı formatları (içerik doğrulanmış, korunanlar hariç)
+        Her durumda: analizi bitmemiş, yok sayılmış, korunan ve içeriği doğrulanamayan dosyalara dokunulmaz."""
+        if not (self.state.get("auto") or self.state.get("auto_formats")):
             return 0
         ids = []
         for g in self.find():
-            if g["kind"] != "kesin" or g["pending"] or g["ignored"]:
+            if g["ignored"] or g["pending"] or not g.get("auto_ok"):
                 continue
-            ids += [f["id"] for f in g["files"] if not f.get("keep")]
+            if g["kind"] == "kesin" and not self.state.get("auto"):
+                continue
+            if g["kind"] == "format" and not self.state.get("auto_formats"):
+                continue
+            if g["kind"] not in ("kesin", "format"):
+                continue
+            ids += [f["id"] for f in g["files"] if not f.get("keep") and not f.get("protect")]
         if not ids:
             return 0
         done, _ = self.lib.trash.delete(ids, title="Otomatik kopya temizliği")
-        log.info("Otomatik kopya temizliği: %d dosya silindi", len(done))
+        log.info("Otomatik kopya/format temizliği: %d dosya silindi", len(done))
         return len(done)
 
 
@@ -405,9 +545,14 @@ def similar_pairs(books):
             fa_by_ext = {}
             for f in a["b"]["formats"]:
                 fa_by_ext.setdefault(f["ext"], f)
+            matched = False
             for f in b["b"]["formats"]:
                 if f["ext"] in fa_by_ext:
                     out.append((a["b"], b["b"], fa_by_ext[f["ext"]], f))
+                    matched = True
+            if not matched and a["b"]["formats"] and b["b"]["formats"]:
+                # farklı formatlar (biri EPUB, diğeri PDF): format grubu olarak değerlendirilecek
+                out.append((a["b"], b["b"], a["b"]["formats"][0], b["b"]["formats"][0]))
     return out
 
 
