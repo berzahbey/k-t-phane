@@ -17,7 +17,8 @@ log = logging.getLogger("ktphane.library")
 FORMATS = {"pdf", "epub", "mobi", "azw", "azw3", "djvu", "djv", "fb2", "txt", "cbz", "cbr", "doc",
            "docx", "rtf", "odt"}
 SKIP_DIRS = {"@eaDir", "#recycle", "#snapshot", "$RECYCLE.BIN", "System Volume Information",
-             "lost+found", ".Trash", ".Trashes", ".AppleDouble", "__MACOSX"}
+             "lost+found", ".Trash", ".Trashes", ".AppleDouble", "__MACOSX",
+             "Favoriler"}  # favoriler klasörü bağlantılardan oluşur, taranmaz
 CACHE_VERSION = 3
 
 
@@ -235,6 +236,11 @@ class Library:
             return
         try:
             self._scan_locked(full=full)
+            if getattr(self, "favorites", None):
+                try:
+                    self.favorites.sync()
+                except Exception:
+                    log.exception("Favoriler eşitlenemedi")
             if getattr(self, "trash", None):
                 try:
                     self.trash.auto_purge()
@@ -437,6 +443,9 @@ class Library:
             out.append(g)
         from .series import assign as assign_series
         assign_series(out)
+        fav = getattr(self, "favorites", None)
+        for g in out:
+            g["favorite"] = bool(fav) and any(x["ckey"] in fav.keys for x in g["formats"])
         out.sort(key=lambda b: b["title"].casefold())
         with self._lock:
             self._books_cache = (ver, out)

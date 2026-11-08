@@ -35,6 +35,8 @@ def create_app():
     lib.trash = Trash(lib)
     from .dedupe import Dedupe
     lib.dedupe = Dedupe(lib)
+    from .favorites import Favorites
+    lib.favorites = Favorites(lib)
     lib.start_background()
     lib.enricher.start()
     app.extensions["library"] = lib
@@ -220,6 +222,22 @@ def create_app():
             lib.set_pref("folder_strict", bool(d["folder_strict"]))
             lib.enricher.wake()
         return jsonify(prefs=lib.prefs)
+
+    # ---------- favoriler ----------
+    @app.post("/api/favorites")
+    def favorites_post():
+        d = request.get_json(silent=True) or {}
+        ckeys = [k for k in d.get("ckeys") or [] if isinstance(k, str)]
+        if not ckeys:
+            return jsonify(error="Kitap seçilmedi"), 400
+        if not organizer.writable(lib):
+            lib.favorites.keys.update(ckeys) if d.get("on") else lib.favorites.keys.difference_update(ckeys)
+            lib.favorites._save()
+            with lib._lock:
+                lib._version += 1
+            return jsonify(ok=True, warning="Kitap klasörü salt okunur; Favoriler klasörü oluşturulamadı")
+        lib.favorites.set(ckeys, bool(d.get("on")))
+        return jsonify(ok=True, count=len(lib.favorites.keys))
 
     def _rec(fid):
         rec = lib.get_file(fid)

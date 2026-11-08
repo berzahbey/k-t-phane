@@ -111,6 +111,7 @@
     const terms = fold(state.q).split(/\s+/).filter(Boolean);
     return state.books.filter((b) => {
       if (terms.length && !terms.every((t) => b._s.includes(t))) return false;
+      if (skip !== "cat" && state.favOnly && !b.favorite) return false;
       if (skip !== "cat" && state.cat && b.category !== state.cat) return false;
       if (skip !== "cat" && state.sub && b.subcategory !== state.sub) return false;
       if (skip !== "lang" && state.langs.size && !state.langs.has(b.language)) return false;
@@ -139,7 +140,7 @@
     box.innerHTML = "";
     document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
     $("#sort").value = state.sort;
-    $("#resultTitle").textContent = state.sub || state.cat || (state.q ? `“${state.q}” için sonuçlar` : "Tüm kitaplar");
+    $("#resultTitle").textContent = state.sub || state.cat || (state.favOnly ? "Favoriler" : state.q ? `“${state.q}” için sonuçlar` : "Tüm kitaplar");
     const n = state.filtered.reduce((t, x) => t + (x.isCollection ? x.volumes.length : 1), 0);
     $("#resultCount").textContent = `${n.toLocaleString("tr")} kitap` + (n !== state.books.length ? ` · toplam ${state.books.length.toLocaleString("tr")}` : "");
     renderActiveChips();
@@ -176,7 +177,10 @@
     const img = b.cover_id ? `<img data-src="/cover/${b.cover_id}" alt="" loading="lazy" decoding="async">` : "";
     const fmts = withFmt ? `<span class="fmt">${[...new Set(b.formats.map((f) => f.ext.toUpperCase()))].map((e) => `<span class="badge">${e}</span>`).join("")}</span>` : "";
     const lang = withFmt && b.language ? `<span class="lang-tag lang-${langCode(b.language).toLowerCase()}" title="${esc(b.language)}">${esc(b.language)}</span>` : "";
-    return `<div class="cover"><div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${lang}${fmts}</div>`;
+    const ck = (b.isCollection ? b.formats : b.formats).map((f) => f.ckey).join(",");
+    const isFav = b.isCollection ? b.volumes.every((v) => v.favorite) : b.favorite;
+    const star = withFmt ? `<span class="fav-btn ${isFav ? "on" : ""}" data-fav="${ck}" data-on="${isFav ? 1 : 0}" title="${isFav ? "Favorilerden çıkar" : "Favorilere ekle"}" role="button"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span>` : "";
+    return `<div class="cover">${star}<div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${lang}${fmts}</div>`;
   }
   const LANG_CODES = { "Türkçe": "TR", "Osmanlıca": "OSM", "Osmanlıca / Farsça": "OSM", "Arapça": "AR", "Farsça": "FA", "English": "EN", "Nederlands": "NL", "Deutsch": "DE", "Français": "FR" };
   const langCode = (l) => LANG_CODES[l] || "XX";
@@ -235,7 +239,9 @@
     const pool = baseFilter("cat");
     const mainCounts = countBy(pool, (b) => b.category), subCounts = countBy(pool, (b) => b.category + "\u0000" + b.subcategory);
     const order = [...Object.keys(state.tree), "Diğer"];
-    let html = `<button class="cat all ${!state.cat ? "active" : ""}" data-cat=""><svg viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12"/></svg>Tüm kitaplar<span class="n">${pool.length}</span></button>`;
+    const favN = state.books.filter((b) => b.favorite).length;
+    let html = `<button class="cat all ${!state.cat && !state.favOnly ? "active" : ""}" data-cat=""><svg viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12"/></svg>Tüm kitaplar<span class="n">${state.favOnly ? state.books.length : pool.length}</span></button>` +
+      `<button class="cat all fav-cat ${state.favOnly ? "active" : ""}" data-fav-only="1"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Favoriler<span class="n">${favN}</span></button>`;
     for (const main of order) {
       if (!mainCounts[main]) continue;
       const subs = (state.tree[main] || ["Sınıflandırılmamış"]).filter((s) => subCounts[main + "\u0000" + s]);
@@ -276,6 +282,7 @@
     }).join("");
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(c, false)}<div class="d-info">
       <h2>${esc(c.title)}</h2><div class="by">${esc(c.author || "Yazar bilinmiyor")} · ${volLabel(c)}</div>
+      ${(() => { const on = c.volumes.every((v) => v.favorite); return `<button class="btn sm fav-toggle ${on ? "on" : ""}" data-fav="${c.formats.map((f) => f.ckey).join(",")}" data-on="${on ? 1 : 0}"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>${on ? "Favorilerde" : "Koleksiyonu favorilere ekle"}</button>`; })()}
       <dl class="d-meta"><dt>Kategori</dt><dd>${esc(c.category)} › ${esc(c.subcategory)}</dd><dt>Dil</dt><dd>${esc(c.language)}</dd>
       <dt>Klasör</dt><dd>${esc(c.language)} / ${esc(c.category)} / Koleksiyonlar / ${esc(c.title)}</dd></dl>
       <div class="vols">${vols}</div>
@@ -319,6 +326,7 @@
     const ocrHint = b.formats.some((f) => f.ext === "pdf" && f.needs_ocr) ? `<p class="muted" style="font-size:12.5px">Bu PDF taranmış görüntüden oluşuyor; metin seçilemez ve aranamaz. İleride OCR ile metne çevrilebilir.</p>` : "";
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(b, false)}<div class="d-info">
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
+      <button class="btn sm fav-toggle ${b.favorite ? "on" : ""}" data-fav="${b.formats.map((f) => f.ckey).join(",")}" data-on="${b.favorite ? 1 : 0}"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>${b.favorite ? "Favorilerde" : "Favorilere ekle"}</button>
       ${b.description ? `<p class="d-desc">${esc(b.description)}</p>` : ""}
       <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div>
       ${editHtml(b.formats.map((f) => f.ckey), b)}
@@ -336,12 +344,15 @@
   $("#sort").addEventListener("change", (e) => { state.sort = e.target.value; store.set("sort", state.sort); render(); });
   document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; store.set("view", state.view); render(); }));
   $("#books").addEventListener("click", (e) => {
+    if (e.target.closest("[data-fav]") && !state.selecting) return;  // yıldız ayrı ele alınır
     const c = e.target.closest("[data-id]"); if (!c) return;
     if (state.selecting) { toggleSel(c.dataset.id, c); return; }
     openDetail(c.dataset.id);
   });
   $("#catNav").addEventListener("click", (e) => {
     const c = e.target.closest(".cat"); if (!c) return;
+    if (c.dataset.favOnly) { state.favOnly = !state.favOnly; state.cat = state.sub = null; render(); closeSidebar(); window.scrollTo({ top: 0 }); return; }
+    if (!c.dataset.cat && !c.dataset.sub) state.favOnly = false;
     const cat = c.dataset.cat || null, sub = c.dataset.sub || null;
     if (!sub && cat && state.cat === cat && !state.sub) state.cat = null; else { state.cat = cat; state.sub = sub; }
     if (!state.cat) state.sub = null;
@@ -451,6 +462,22 @@
   $("#btnOrganize").addEventListener("click", () => { $("#organize").showModal(); orgPoll(); });
   $("#organize").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
+  // ---------- favoriler ----------
+  async function setFavorite(ckeys, on) {
+    try {
+      const d = await post("/api/favorites", { ckeys, on });
+      toast(on ? "Favorilere eklendi" + (d.warning ? " (" + d.warning + ")" : "") : "Favorilerden çıkarıldı");
+      const reopen = $("#detail").open && location.hash.match(/kitap=([^&]+)/);
+      await load();
+      if (reopen) openDetail(reopen[1]);
+    } catch (e) { toast("Olmadı: " + e.message); }
+  }
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-fav]"); if (!el || state.selecting && el.closest("#books")) return;
+    e.preventDefault(); e.stopPropagation();
+    setFavorite(el.dataset.fav.split(","), el.dataset.on !== "1");
+  }, true);
+
   // ---------- toplu seçim ----------
   state.sel = new Set(); state.selecting = false;
   function setSelecting(on) {
@@ -480,7 +507,7 @@
     if (!state.selecting) { $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/Seçimi kaldır$/, "Tümünü seç"); return; }
     const n = state.sel.size, files = selectedFiles();
     $("#selCount").textContent = n ? `${n.toLocaleString("tr")} seçildi · ${files.length.toLocaleString("tr")} dosya · ${fmtSize(files.reduce((t, f) => t + f.size, 0))}` : "Kitaplara dokunarak seçin";
-    $("#selDelete").disabled = !n;
+    $("#selDelete").disabled = !n; $("#selFav").disabled = !n;
     const all = allVisibleSelected();
     $("#selAll").textContent = all ? "Seçimi kaldır" : `Tümünü seç (${state.filtered.length.toLocaleString("tr")})`;
     $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/(Tümünü seç|Seçimi kaldır)$/, all ? "Seçimi kaldır" : "Tümünü seç");
@@ -502,6 +529,10 @@
     if (state.selecting && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a" && document.activeElement !== $("#q")) {
       e.preventDefault(); selectAllVisible(true);
     }
+  });
+  $("#selFav").addEventListener("click", async () => {
+    const files = selectedFiles(); if (!files.length) return;
+    await setFavorite(files.map((f) => f.ckey), true); setSelecting(false);
   });
   $("#selDelete").addEventListener("click", async () => {
     const files = selectedFiles(); if (!files.length) return;

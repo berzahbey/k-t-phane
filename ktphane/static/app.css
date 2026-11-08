@@ -313,3 +313,17 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .edit-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .edit-row select { flex: 1; min-width: 140px; height: 32px; }
 .edit-row.small { gap: 14px; font-size: 12.5px; }
+
+/* ---------- favoriler ---------- */
+.fav-btn { position: absolute; top: 6px; right: 6px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; opacity: 0; transition: opacity .15s, transform .1s; cursor: pointer; }
+.fav-btn svg { width: 17px; height: 17px; }
+.card:hover .fav-btn, .fav-btn.on, .fav-btn:focus { opacity: 1; }
+.fav-btn:hover { transform: scale(1.1); }
+.fav-btn.on { background: rgba(0,0,0,.55); color: #f5c242; }
+.fav-btn.on svg, .fav-toggle.on svg, .fav-cat svg { fill: currentColor; }
+.fav-cat svg { color: #e0a823; }
+.fav-toggle { margin: -4px 0 6px; }
+.fav-toggle.on { color: #b7860b; border-color: #e8cf8a; background: #fbf3dc; }
+@media (prefers-color-scheme: dark) { .fav-toggle.on { color: #f0c64f; border-color: #5c4a1a; background: #2c2513; } }
+.books.selecting .fav-btn { display: none; }
+@media (hover: none) { .fav-btn { opacity: .85; } }

@@ -51,13 +51,19 @@ class Trash:
                 except OSError as e:
                     errors.append(f"{rec['name']}: {e}")
                     continue
-                done.append({"path": rec["path"], "name": rec["name"], "size": rec["size"],
+                from .library import _ckey
+                done.append({"path": rec["path"], "name": rec["name"], "size": rec["size"], "ckey": _ckey(rec),
                              "title": title or rec.get("title") or rec["name"], "time": int(time.time())})
                 with self.lib._lock:
                     self.lib.files.pop(fid, None)
                     self.lib.org.get("placed", {}).pop(rec["path"], None)
                     self.lib._version += 1
                 _cleanup_dirs(self.lib, [os.path.dirname(path)])
+        if done and getattr(self.lib, "favorites", None):
+            try:
+                self.lib.favorites.forget([d["ckey"] for d in done])
+            except Exception:
+                log.exception("Favori bağlantısı kaldırılamadı")
         if done:
             try:
                 self._append_log(done)

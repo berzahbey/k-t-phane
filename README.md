@@ -37,6 +37,10 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   eksiksiz > eksik, sağlam > bozuk) kalır, diğerleri iki aşamalı onayla silinir. *Kesin* kopyalar (birebir aynı
   dosya ya da aynı sayfa sayılı aynı PDF) istenirse yeni eklendiğinde otomatik temizlenir; *muhtemel* kopyalar
   (farklı baskı/çeviri olabilir) yalnızca listelenir. Farklı formatlar (EPUB + PDF) kopya sayılmaz.
+- **Favoriler**: Kapaktaki ★ ile (veya detaydan, toplu seçimden) favorilere eklenir; solda “Favoriler” listesi.
+  Kitap klasöründe `Favoriler/` klasörü oluşur. İçindekiler kopya değil sabit bağlantıdır (ek yer kaplamaz,
+  asıl dosya taşınsa da çalışır); koleksiyonlar alt klasörde durur. Favoriden çıkarılan veya silinen kitabın
+  bağlantısı kaldırılır; klasöre elle konan dosyalara dokunulmaz.
 - **Toplu seçim**: “Seç” ile kitaplar/koleksiyonlar işaretlenir; “Görünenlerin tümünü seç” filtre ve aramayla
   birlikte çalışır; “Seçilenleri sil” aynı iki aşamalı onayla toplu siler.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
