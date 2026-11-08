@@ -175,7 +175,8 @@ def create_app():
         groups = lib.dedupe.find()
         active = [g for g in groups if not g["ignored"]]
         return jsonify(groups=groups, auto=bool(lib.dedupe.state.get("auto")),
-                       count=len(active), extra=sum(len(g["files"]) - 1 for g in active))
+                       count=len(active), extra=sum(len(g["files"]) - 1 for g in active),
+                       different=getattr(lib.dedupe, "different", []))
 
     @app.post("/api/duplicates/ignore")
     def dup_ignore():

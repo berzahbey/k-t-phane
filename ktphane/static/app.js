@@ -598,6 +598,9 @@
       <span class="muted">Kesin kopyalar önceden işaretli; “muhtemel” olanlar farklı baskı veya çeviri olabilir, kontrol edip işaretleyin.</span></div>`;
     h += `<div class="dup-list">` + active.map((g) => dupGroupHtml(g)).join("") + `</div>`;
     if (active.length) h += `<div class="org-actions dup-foot"><button class="linkish" id="dupAll">Tümünü işaretle</button><span class="grow"></span><button class="btn danger-solid" id="dupDelete"></button></div>`;
+    if (d.different && d.different.length) h += `<details class="dup-ign"><summary>Adı benzeyen ama içeriği farklı çıkan ${d.different.length} çift (kopya sayılmadı)</summary>
+      <p class="muted small">Metinleri karşılaştırıldı ve büyük ölçüde farklı: büyük ihtimalle başka bir çeviri veya baskı.</p>` +
+      d.different.map((x) => `<div class="dup-ign-row">${esc(x.a)} <span class="muted">(${esc(x.a_author)})</span> ↔ ${esc(x.b)} <span class="muted">(${esc(x.b_author)})</span> · <b>içerik %${Math.round(x.sim * 100)} aynı</b></div>`).join("") + `</details>`;
     if (ignored.length) h += `<details class="dup-ign"><summary>Kopya değil olarak işaretlenen ${ignored.length} grup</summary>${ignored.map((g) => `<div class="dup-ign-row">${esc(g.title)} <button class="linkish" data-unignore="${esc(g.key)}">geri al</button></div>`).join("")}</details>`;
     box.innerHTML = h;
     updateDupButton();

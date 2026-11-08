@@ -177,6 +177,7 @@ class Dedupe:
 
         ignored = set(self.state.get("ignored", []))
         out = []
+        self.different = []  # adı benzeyip içeriği farklı çıkanlar (kullanıcıya bilgi için)
         mids_changed = False
         for key, g in groups.items():
             scored = []
@@ -205,7 +206,12 @@ class Dedupe:
                     sim = _containment(ref_sh, sh)
                     x["sim"] = sim
                     if sim is not None and sim < 0.15:
-                        continue  # metin farklı: başka çeviri/baskı ya da başka kitap -> kopya değil
+                        # metin farklı: başka çeviri/baskı ya da başka kitap -> kopya değil
+                        bx, br = fmt_book.get(x["id"]) or {}, fmt_book.get(ref["id"]) or {}
+                        self.different.append({"a": br.get("title", ""), "a_author": br.get("author", ""),
+                                               "a_path": ref["path"], "b": bx.get("title", ""),
+                                               "b_author": bx.get("author", ""), "b_path": x["path"], "sim": sim})
+                        continue
                     kept.append(x)
                     sims.append(sim)
                 if len(kept) < 2:
@@ -347,6 +353,13 @@ def similar_pairs(books):
         items.append({"b": b, "nt": nt, "toks": set(toks), "key": {w for w in toks if w not in _STOP and len(w) >= 4},
                       "fa": first_author(b["author"]), "atoks": _all_author_tokens(b["author"]),
                       "digits": re.findall(r"\d+", nt), "vol": b.get("volume") if b.get("series") else None})
+    # başlık ile yazar yer değiştirmiş olabilir ("Atakan Altınörs" / yazar: "Dil Felsefesine Giriş"):
+    # başlık+yazar kelimelerinin tamamı aynıysa aday say
+    combo = {}
+    for i, it in enumerate(items):
+        it["all"] = frozenset(w for w in it["toks"] | it["atoks"] if w not in _STOP)
+        if len(it["all"]) >= 3:
+            combo.setdefault(it["all"], []).append(i)
     index = {}
     for i, it in enumerate(items):
         for w in it["key"]:
@@ -360,6 +373,8 @@ def similar_pairs(books):
         cands = set()
         for k in a["probe"]:
             cands |= index.get(k, set())
+        swapped = {j for j in combo.get(a["all"], []) if j != i}
+        cands |= swapped
         for j in cands:
             if j <= i or (i, j) in seen:
                 continue
@@ -373,6 +388,10 @@ def similar_pairs(books):
             fa, fb = a["fa"], b["fa"]
             author_ok = (not fa or not fb or fa == fb or SequenceMatcher(None, fa, fb).ratio() >= 0.85
                          or fa in b["toks"] or fb in a["toks"])
+            if j in swapped:  # başlık/yazar yer değiştirmiş: kelimeler aynı, içerik kontrolü karar verecek
+                author_ok, forced = True, True
+            else:
+                forced = False
             if not author_ok:
                 continue
             sm = SequenceMatcher(None, a["nt"], b["nt"])
@@ -381,7 +400,7 @@ def similar_pairs(books):
             contained = (len(small["key"]) >= 1 and len(small["nt"]) >= 8
                          and small["toks"] <= (big["toks"] | big["atoks"] | small["atoks"])
                          and (big["toks"] - small["toks"]) <= (small["atoks"] | big["atoks"] | _STOP))
-            if ratio < 0.9 and not contained:
+            if ratio < 0.9 and not contained and not forced:
                 continue
             fa_by_ext = {}
             for f in a["b"]["formats"]:
