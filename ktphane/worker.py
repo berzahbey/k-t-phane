@@ -68,7 +68,11 @@ def run(path, ext):
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) > 3 and sys.argv[3] == "stats":
+        if len(sys.argv) > 3 and sys.argv[3] == "full":
+            warnings.filterwarnings("ignore")
+            from . import content
+            res = {"text": content.full_text(sys.argv[2], sys.argv[1])}
+        elif len(sys.argv) > 3 and sys.argv[3] == "stats":
             warnings.filterwarnings("ignore")
             from . import content
             res = content.book_stats(sys.argv[2], sys.argv[1])

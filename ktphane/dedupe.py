@@ -233,15 +233,15 @@ class Dedupe:
         exact = g.get("exact")
         kept = [keep]
         sims = []
-        ref_sh = None if exact else self._shingles(keep)
+
         for x in scored[1:]:
             if exact:
                 x["sim"] = 1.0
             elif x["broken"]:
                 x["sim"] = None
             else:
-                x["sim"] = _containment(ref_sh, self._shingles(x))
-                if x["sim"] is not None and x["sim"] < 0.15:
+                x["sim"] = self.similarity(keep, x)
+                if x["sim"] is not None and x["sim"] < 0.12:
                     bx, br = fmt_book.get(x["id"]) or {}, fmt_book.get(keep["id"]) or {}
                     self.different.append({"a": br.get("title", ""), "a_author": br.get("author", ""),
                                            "a_path": keep["path"], "b": bx.get("title", ""),
@@ -268,7 +268,7 @@ class Dedupe:
         deletable = [x for x in kept[1:] if not x.get("protect")]
         verified = [v for v in sims if v is not None]
         shown = [x["sim"] for x in kept[1:] if x.get("sim") is not None]
-        thr = 0.5 if multi else 0.8
+        thr = 0.4 if multi else 0.6
         auto_ok = bool(deletable) and (exact or (len(verified) == len(sims) and min(verified, default=0) >= thr)
                                        or all(x["broken"] for x in deletable))
         if exact:
@@ -277,7 +277,7 @@ class Dedupe:
             kind = "format"
             reason = ("Aynı kitap, farklı formatlar — " +
                       (f"içerik %{int(min(shown) * 100)} aynı" if shown else "içerik karşılaştırılamadı"))
-        elif verified and min(verified) >= 0.8 and len(verified) == len(sims):
+        elif verified and min(verified) >= 0.6 and len(verified) == len(sims):
             kind, reason = "kesin", f"İçerik aynı (%{int(min(verified) * 100)} eşleşme)"
         elif verified:
             kind, reason = "muhtemel", f"İçerik kısmen benzer (%{int(min(verified) * 100)}) — farklı baskı olabilir"
@@ -321,8 +321,10 @@ class Dedupe:
         chars = (st or {}).get("chars")
         if chars and max_chars and not (st or {}).get("unknown"):
             ratio = chars / max_chars
-            s += 250 * ratio
-            why.append("eksiksiz" if ratio >= 0.95 else f"metnin ~%{int(ratio * 100)}'i")
+            # PDF uzunluğu tahmindir (künye, sayfa başlıkları dahil); %85 üstü "eksiksiz" sayılır
+            eff = 1.0 if ratio >= 0.85 else ratio / 0.85
+            s += 250 * eff
+            why.append("eksiksiz" if ratio >= 0.85 else f"metnin ~%{int(ratio * 100)}'i")
         else:
             s += 150
         if f["ext"] == "epub":
@@ -389,6 +391,45 @@ class Dedupe:
         self.mids[k] = text[:4000]
         return self.mids[k], True
 
+    def _full(self, f):
+        """Dosyanın tüm metninin parça kümesi (diskte önbellek: /data/parcalar/<ckey>.bin)."""
+        import array
+        import subprocess
+        import sys
+        d = os.path.join(self.lib.data_dir, "parcalar")
+        p = os.path.join(d, f["ckey"] + ".bin")
+        if os.path.exists(p):
+            a = array.array("I")
+            with open(p, "rb") as fh:
+                a.frombytes(fh.read())
+            return set(a) or None
+        sset = None
+        if f["ext"] in ("epub", "pdf", "txt") and not f.get("broken"):
+            try:
+                r = subprocess.run([sys.executable, "-m", "ktphane.worker", self.lib.abs_path(f), f["ext"], "full"],
+                                   capture_output=True, text=True, timeout=180,
+                                   cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                text = (json.loads(r.stdout or "{}") or {}).get("text", "")
+                sset = _shingle_set(text)
+            except Exception as e:
+                log.info("Tam metin okunamadı %s: %s", f["path"], e)
+        try:
+            os.makedirs(d, exist_ok=True)
+            with open(p, "wb") as fh:
+                fh.write(array.array("I", sorted(sset or ())).tobytes())
+        except OSError:
+            pass
+        return sset
+
+    def similarity(self, a, b):
+        """İki dosyanın aynı metin olma oranı: birinin örnek parçaları diğerinin TÜM metninde
+        ne kadar geçiyor (iki yönde, büyük olan). Taranmış PDF'te tüm metin yerine OCR örneği kullanılır."""
+        pa, pb = self._shingles(a), self._shingles(b)
+        fa = self._full(a) or pa
+        fb = self._full(b) or pb
+        vals = [v for v in (_probe_in(pa, fb), _probe_in(pb, fa)) if v is not None]
+        return max(vals) if vals else None
+
     def _shingles(self, f):
         a = (self.lib.enricher.get(f["ckey"]) or {}) if getattr(self.lib, "enricher", None) else {}
         mid, new = self._mid(f) if f["ext"] in ("epub", "pdf") else ("", False)
@@ -423,12 +464,13 @@ class Dedupe:
 
 
 def _shingle_set(text):
-    """Metnin 4 kelimelik parçalarının özetleri. Az metin varsa None (karşılaştırılamaz)."""
-    from .textutil import words
-    w = words(text)
-    if len(w) < 120:
+    """Metnin 3 kelimelik parçalarının kalıcı özetleri. Az metin varsa None (karşılaştırılamaz)."""
+    import zlib
+    from .content import norm_tokens
+    w = norm_tokens(text)
+    if len(w) < 80:
         return None
-    return {hash(" ".join(w[i:i + 4])) for i in range(len(w) - 3)}
+    return {zlib.crc32(" ".join(w[i:i + 3]).encode()) for i in range(len(w) - 2)}
 
 
 def _containment(a, b):
@@ -436,6 +478,13 @@ def _containment(a, b):
     if not a or not b:
         return None
     return round(len(a & b) / min(len(a), len(b)), 2)
+
+
+def _probe_in(probe, full):
+    """Bir dosyadan alınan örnek parçaların, diğer dosyanın tüm metninde geçme oranı."""
+    if not probe or not full:
+        return None
+    return round(len(probe & full) / len(probe), 2)
 
 
 _EDITION = re.compile(r"\b(tam metin|orijinal|orjinal|yeni baski|genisletilmis|gozden gecirilmis|"

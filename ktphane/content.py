@@ -317,3 +317,50 @@ def text_quality(text):
     short = sum(1 for t in content_toks if len(t) <= 3) / max(1, len(content_toks))  # hecelere bölünmüş kelimeler
     q = 0.6 * wordlike + 0.4 * min(1.0, stop / 0.10) - 2 * longjunk - 1.5 * max(0.0, short - 0.3)
     return round(max(0.0, min(1.0, q)), 2)
+
+
+def full_text(ext, path, limit=1_500_000):
+    """Karşılaştırma için kitabın (neredeyse) tüm metni. EPUB: bütün bölümler; PDF: kitaba yayılmış
+    40 sayfa (metin katmanı düzgünse); diğerleri: boş."""
+    if ext == "epub":
+        out, total = [], 0
+        with zipfile.ZipFile(path) as z:
+            for n in z.namelist():
+                if n.lower().endswith((".xhtml", ".html", ".htm")):
+                    try:
+                        t = _clean(z.read(n).decode("utf-8", "ignore"))
+                    except Exception:
+                        continue
+                    out.append(t)
+                    total += len(t)
+                    if total >= limit:
+                        break
+        return " ".join(out)[:limit]
+    if ext == "pdf":
+        from pypdf import PdfReader
+        r = PdfReader(path, strict=False)
+        if r.is_encrypted:
+            r.decrypt("")
+        n = len(r.pages)
+        if not n:
+            return ""
+        idx = sorted({min(n - 1, int(n * k / 41)) for k in range(1, 41)})
+        parts = []
+        for i in idx:
+            try:
+                parts.append(r.pages[i].extract_text() or "")
+            except Exception:
+                pass
+        txt = " ".join(parts)
+        return txt[:limit] if text_layer_ok(txt) else ""
+    if ext == "txt":
+        with open(path, "rb") as f:
+            return f.read(limit).decode("utf-8", "ignore")
+    return ""
+
+
+def norm_tokens(text):
+    """Karşılaştırma için sadeleştirilmiş kelimeler: satır sonu tireleri birleştirilir,
+    sayılar (sayfa numaraları) ve tek harfler atılır."""
+    t = re.sub(r"(\w)[-­]\s*\n\s*(\w)", r"\1\2", text or "")  # kelime-\nsonu -> kelimesonu
+    return [w for w in words(t) if len(w) > 1 and not w.isdigit()]
