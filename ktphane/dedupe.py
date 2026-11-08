@@ -9,6 +9,7 @@ Farklı formatlar (EPUB + PDF) kopya sayılmaz; ikisi de kalır.
 """
 import hashlib
 import json
+import re
 import logging
 import os
 import threading
@@ -138,6 +139,36 @@ class Dedupe:
                     kind, reason = "kesin", "Aynı kitap, kopyalardan biri bozuk"
                 groups[f"b:{b['id']}:{ext}"] = {"kind": kind, "reason": reason, "files": fs}
 
+        # 2b) benzer başlık + aynı (ilk) yazar: "Cumhuriyet'in İlk Yüzyılı" ile
+        #     "Cumhuriyet'in İlk Yüzyılı (1923-2023)" / "İlber Ortaylı, İsmail Küçükkaya" gibi
+        fuzzy = {}
+        for b in books:
+            nt = norm_title(b["title"])
+            if len(nt) < 6:
+                continue
+            vol = b.get("volume") if b.get("series") else None
+            for f in b["formats"]:
+                fuzzy.setdefault((nt, vol, f["ext"]), []).append((b, f))
+        for (nt, vol, ext), items in fuzzy.items():
+            if len({b["id"] for b, _ in items}) < 2:
+                continue
+            # yazarları uyuşanları kümele (biri boşsa başlığa güven)
+            clusters = []
+            for b, f in items:
+                a = first_author(b["author"])
+                for c in clusters:
+                    if not a or not c["author"] or a == c["author"]:
+                        c["files"].append(f)
+                        c["author"] = c["author"] or a
+                        break
+                else:
+                    clusters.append({"author": a, "files": [f]})
+            for i, c in enumerate(clusters):
+                if len(c["files"]) > 1:
+                    groups[f"f:{ext}:{nt}:{vol}:{i}"] = {
+                        "kind": "muhtemel", "files": c["files"],
+                        "reason": "Başlık ve yazar çok benzer — farklı baskı olabilir"}
+
         # 3) çakışan grupları birleştir (aynı dosya hem birebir kopya hem aynı kitap grubunda olabilir)
         parent = {}
 
@@ -172,7 +203,7 @@ class Dedupe:
                 scored.append({"id": f["id"], "path": f["path"], "name": f["name"], "ext": f["ext"],
                                "size": f["size"], "pages": f.get("pages"), "needs_ocr": f.get("needs_ocr"),
                                "broken": f.get("broken"), "score": sc, "why": why})
-            scored.sort(key=lambda x: (-x["score"], x["path"]))
+            scored.sort(key=lambda x: (-x["score"], -x["size"], x["path"]))
             scored[0]["keep"] = True
             # birebir aynı dosyalarda analiz beklemeye gerek yok; diğerlerinde kalite bilinmeli
             exact_only = g["reason"] == "Birebir aynı dosya"
@@ -198,6 +229,32 @@ class Dedupe:
         done, _ = self.lib.trash.delete(ids, title="Otomatik kopya temizliği")
         log.info("Otomatik kopya temizliği: %d dosya silindi", len(done))
         return len(done)
+
+
+_EDITION = re.compile(r"\b(tam metin|orijinal|orjinal|yeni baski|genisletilmis|gozden gecirilmis|"
+                      r"\d+\.? ?baski|baski|edition|ed|cilt|kitap|epub|pdf|e-?kitap|ebook)\b")
+
+
+def norm_title(t):
+    """Kopya karşılaştırması için sade başlık: parantez/köşeli ayraç içi, alt başlık (: ve – sonrası),
+    yıllar ve baskı ibareleri atılır. Cilt numarası gibi diğer sayılar korunur."""
+    from .textutil import fold
+    t = fold(t or "")
+    t = re.sub(r"[\(\[\{].*?[\)\]\}]", " ", t)
+    t = re.split(r"\s[:–—]\s|:\s", t)[0]
+    t = re.sub(r"\b1[0-9]{3}\b|\b20[0-9]{2}\b", " ", t)
+    t = t.replace("'", "").replace("’", "")
+    t = _EDITION.sub(" ", t)
+    return "".join(re.findall(r"[^\W_]+", t))
+
+
+def first_author(a):
+    """İlk yazarın soyadı (veya tek adı); 'Prof. Dr.' gibi ünvanlar atılır."""
+    from .textutil import fold
+    a = fold(a or "")
+    a = re.split(r",|;|&|\sve\s|\sand\s|\s-\s", a)[0]
+    toks = [t for t in re.findall(r"[^\W_]+", a) if t not in {"prof", "dr", "doc", "yrd", "hz", "imam", "seyh", "mr", "ed"}]
+    return toks[-1] if toks else ""
 
 
 def _size(b):
