@@ -15,6 +15,12 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+try:
+    from zoneinfo import ZoneInfo
+    _PACIFIC = ZoneInfo("America/Los_Angeles")
+except Exception:  # saat dilimi verisi yoksa yaklaşık değer (PST)
+    _PACIFIC = timezone(timedelta(hours=-8))
+
 from .categories import CATEGORIES
 from .library import LANG_LABELS
 
@@ -155,7 +161,8 @@ class Gemini:
     # ---------- günlük sayaç ----------
     @staticmethod
     def _today():
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # Google günlük kotayı Pasifik saatiyle gece yarısı sıfırlar; sayaç da o güne göre tutulur
+        return datetime.now(_PACIFIC).strftime("%Y-%m-%d")
 
     def _load_usage(self):
         try:
@@ -178,7 +185,9 @@ class Gemini:
             pass
 
     def _pause_until_tomorrow(self, reason):
-        tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=0, minute=5, second=0)
+        # Bir sonraki Pasifik gece yarısı + 5 dk (Avrupa saatiyle sabah 09:05 civarı)
+        now = datetime.now(_PACIFIC)
+        tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
         self.paused_until = int(tomorrow.timestamp())
         self.last_error = reason
         log.info("Gemini duraklatıldı (%s), devam: %s", reason, tomorrow.isoformat())
