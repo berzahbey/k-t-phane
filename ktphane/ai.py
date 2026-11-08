@@ -76,6 +76,7 @@ class Gemini:
         self._last = 0.0
         self.paused_until = 0
         self.last_error = None
+        self._daily_hits = 0
         self.usage = self._load_usage()
         self.settings_file = os.path.join(data_dir, "settings.json")
         self.key_source = "env" if self.key else None
@@ -237,15 +238,29 @@ class Gemini:
                     data = json.load(r)
                 self._count()
                 self.last_error = None
+                self._daily_hits = 0
                 return self._parse(data)
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "ignore")
                 if e.code == 429:
-                    if re.search(r"PerDay|per day|daily", detail, re.I):
-                        self._pause_until_tomorrow("Gemini ücretsiz günlük kotası doldu")
+                    # Yalnızca Google'ın bildirdiği kota kimliği "PerDay" ise günlük kota dolmuştur.
+                    # Dakikalık sınır (aynı anahtarı kullanan başka uygulamalar da olabilir) için
+                    # kısa bekleyip devam edilir; günlük şüphesi iki kez üst üste doğrulanmadan
+                    # bütün gün beklenmez.
+                    quota_ids = re.findall(r'"quotaId":\s*"([^"]+)"', detail)
+                    daily = any("PerDay" in q for q in quota_ids) and not any("PerMinute" in q for q in quota_ids)
+                    if daily:
+                        self._daily_hits += 1
+                        if self._daily_hits >= 2:
+                            self._daily_hits = 0
+                            self._pause_until_tomorrow("Gemini ücretsiz günlük kotası doldu")
+                            raise QuotaExhausted()
+                        self.last_error = "Günlük kota dolmuş olabilir; 15 dk sonra tekrar denenecek"
+                        self.paused_until = int(time.time()) + 900
                         raise QuotaExhausted()
                     m = re.search(r'"retryDelay":\s*"(\d+)', detail)
-                    time.sleep(int(m.group(1)) + 1 if m else 30 * (attempt + 1))
+                    self.last_error = "Dakikalık sınır; kısa süre bekleniyor"
+                    time.sleep(int(m.group(1)) + 2 if m else 30 * (attempt + 1))
                     continue
                 if e.code in (401, 403):
                     self.last_error = "API anahtarı geçersiz veya yetkisiz"
