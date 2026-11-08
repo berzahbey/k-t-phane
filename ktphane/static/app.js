@@ -477,19 +477,31 @@
   function updateSelBar() {
     const bar = $("#selBar");
     bar.hidden = !state.selecting;
-    if (!state.selecting) return;
+    if (!state.selecting) { $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/Seçimi kaldır$/, "Tümünü seç"); return; }
     const n = state.sel.size, files = selectedFiles();
     $("#selCount").textContent = n ? `${n.toLocaleString("tr")} seçildi · ${files.length.toLocaleString("tr")} dosya · ${fmtSize(files.reduce((t, f) => t + f.size, 0))}` : "Kitaplara dokunarak seçin";
     $("#selDelete").disabled = !n;
+    const all = allVisibleSelected();
+    $("#selAll").textContent = all ? "Seçimi kaldır" : `Tümünü seç (${state.filtered.length.toLocaleString("tr")})`;
+    $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/(Tümünü seç|Seçimi kaldır)$/, all ? "Seçimi kaldır" : "Tümünü seç");
   }
   $("#btnSelect").addEventListener("click", () => setSelecting(!state.selecting));
   $("#selCancel").addEventListener("click", () => setSelecting(false));
-  $("#selAll").addEventListener("click", () => {
-    const all = state.filtered.every((x) => state.sel.has(x.id));
-    for (const x of state.filtered) all ? state.sel.delete(x.id) : state.sel.add(x.id);
+  function selectAllVisible(on) {
+    for (const x of state.filtered) on ? state.sel.add(x.id) : state.sel.delete(x.id);
     document.querySelectorAll("#books [data-id]").forEach((el) => el.classList.toggle("sel", state.sel.has(el.dataset.id)));
-    $("#selAll").textContent = all ? "Görünenlerin tümünü seç" : "Seçimi kaldır";
     updateSelBar();
+  }
+  const allVisibleSelected = () => state.filtered.length && state.filtered.every((x) => state.sel.has(x.id));
+  $("#selAll").addEventListener("click", () => selectAllVisible(!allVisibleSelected()));
+  $("#btnSelectAll").addEventListener("click", () => {
+    if (!state.selecting) setSelecting(true);
+    selectAllVisible(!allVisibleSelected());
+  });
+  document.addEventListener("keydown", (e) => {
+    if (state.selecting && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a" && document.activeElement !== $("#q")) {
+      e.preventDefault(); selectAllVisible(true);
+    }
   });
   $("#selDelete").addEventListener("click", async () => {
     const files = selectedFiles(); if (!files.length) return;
