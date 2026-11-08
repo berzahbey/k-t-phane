@@ -640,7 +640,7 @@
         <div class="small"><span class="badge ${g.kind === "kesin" ? "broken" : "ocr"}">${g.kind === "kesin" ? "Kesin kopya" : "Muhtemel kopya"}</span> <span class="muted">${esc(g.reason)}${g.pending ? " · analiz bekleniyor" : ""}</span></div></div>
       <button class="linkish" data-ignore="${esc(g.key)}" title="Bu grup bir daha önerilmesin">Kopya değil</button></div>` +
       g.files.map((f, i) => `<label class="dup-file ${f.keep ? "" : "del"}"><input type="radio" name="keep-${esc(g.key)}" value="${f.id}" ${f.keep ? "checked" : ""}>
-        <span class="dup-file-main"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="muted small">${esc(f.why)}</span></span>
+        <span class="dup-file-main"><span class="dup-path" title="${esc(f.path)}">${esc(f.path)}</span><span class="muted small">${esc(f.why)}${f.sim != null ? ` · içerik %${Math.round(f.sim * 100)} aynı` : ""}</span></span>
         <span class="dup-tag keep">Kalsın</span><span class="dup-tag del">Silinecek</span></label>`).join("") + `</div>`;
   }
   function dupSelectedIds() {

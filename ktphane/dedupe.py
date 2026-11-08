@@ -1,10 +1,11 @@
 """Kopya kitap bulma: hangisi daha iyi durumdaysa o kalır, diğerleri silinmeye önerilir.
 
-Türler:
-  kesin    — birebir aynı dosya (içerik özeti aynı) ya da aynı kitap + aynı format + PDF'te sayfa
-             sayısı neredeyse aynı (±%2). Otomatik temizlik yalnızca bunlara dokunur.
-  muhtemel — aynı başlık + yazar + format ama farklı baskı/çeviri olabilir; yalnızca listelenir,
-             kullanıcı onaylamadan silinmez.
+Karar kitabın İÇERİĞİNE göre verilir (yalnızca isim yetmez):
+  kesin    — birebir aynı dosya ya da baş ve orta kısımlarındaki metin en az %80 aynı.
+             Otomatik temizlik yalnızca bunlara dokunur.
+  muhtemel — metin kısmen benziyor (%15–80) ya da metin okunamadığı için karşılaştırılamadı;
+             yalnızca listelenir, kullanıcı onaylamadan silinmez.
+  (listelenmez) — adı benzese de metni farklı (<%15): başka çeviri/baskı ya da başka kitap.
 Farklı formatlar (EPUB + PDF) kopya sayılmaz; ikisi de kalır.
 """
 import hashlib
@@ -25,6 +26,8 @@ class Dedupe:
         self._lock = threading.Lock()
         self.hashes = self._load(self.hash_file, {})
         self.state = self._load(self.state_file, {"auto": False, "ignored": []})
+        self.mid_file = os.path.join(lib.data_dir, "orta-metin.json")
+        self.mids = self._load(self.mid_file, {})  # ckey -> kitabın ortasından metin örneği
 
     @staticmethod
     def _load(path, default):
@@ -174,24 +177,88 @@ class Dedupe:
 
         ignored = set(self.state.get("ignored", []))
         out = []
+        mids_changed = False
         for key, g in groups.items():
             scored = []
             for f in g["files"]:
                 sc, why = self.score(f, placed)
                 scored.append({"id": f["id"], "path": f["path"], "name": f["name"], "ext": f["ext"],
                                "size": f["size"], "pages": f.get("pages"), "needs_ocr": f.get("needs_ocr"),
-                               "broken": f.get("broken"), "score": sc, "why": why})
+                               "broken": f.get("broken"), "score": sc, "why": why, "ckey": f["ckey"]})
             scored.sort(key=lambda x: (-x["score"], -x["size"], x["path"]))
-            scored[0]["keep"] = True
-            # birebir aynı dosyalarda analiz beklemeye gerek yok; diğerlerinde kalite bilinmeli
             exact_only = g["reason"] == "Birebir aynı dosya"
+            kind, reason = g["kind"], g["reason"]
+            if not exact_only:
+                # İÇERİK KARŞILAŞTIRMASI: en iyi dosyanın metniyle diğerlerininki
+                ref = next((x for x in scored if not x["broken"]), scored[0])
+                ref_sh, mids_changed = self._shingles(ref, mids_changed)
+                kept = [ref]
+                sims = []
+                for x in scored:
+                    if x is ref:
+                        continue
+                    if x["broken"]:
+                        x["sim"] = None
+                        kept.append(x)
+                        continue
+                    sh, mids_changed = self._shingles(x, mids_changed)
+                    sim = _containment(ref_sh, sh)
+                    x["sim"] = sim
+                    if sim is not None and sim < 0.15:
+                        continue  # metin farklı: başka çeviri/baskı ya da başka kitap -> kopya değil
+                    kept.append(x)
+                    sims.append(sim)
+                if len(kept) < 2:
+                    continue
+                scored = kept
+                known = [v for v in sims if v is not None]
+                if known and min(known) >= 0.8 and len(known) == len(sims):
+                    kind = "kesin"
+                    reason = f"İçerik aynı (%{int(min(known) * 100)} eşleşme)"
+                elif known:
+                    kind = "muhtemel"
+                    reason = f"İçerik kısmen benzer (%{int(min(known) * 100)}) — farklı baskı olabilir"
+                else:
+                    kind = "muhtemel"
+                    reason = "İçerik karşılaştırılamadı (metin okunamadı) — " + g["reason"]
+            scored[0]["keep"] = True
             pending = not exact_only and any(x["ext"] == "pdf" and x["needs_ocr"] is None and not x["broken"] for x in scored)
             b = fmt_book.get(scored[0]["id"]) or {}
-            out.append({"key": key, "kind": g["kind"], "reason": g["reason"], "title": b.get("title", ""),
+            out.append({"key": key, "kind": kind, "reason": reason, "title": b.get("title", ""),
                         "author": b.get("author", ""), "files": scored, "pending": pending,
                         "ignored": key in ignored})
+        if mids_changed:
+            try:
+                self._save(self.mid_file, self.mids)
+            except OSError:
+                pass
         out.sort(key=lambda g: (g["ignored"], g["kind"] != "kesin", g["title"].casefold()))
         return out
+
+    # ---------- içerik parmak izi ----------
+    def _mid(self, f):
+        """Kitabın ortasından metin (ayrı süreçte, zaman aşımıyla); önbelleğe alınır."""
+        import subprocess
+        import sys
+        k = f["ckey"]
+        if k in self.mids:
+            return self.mids[k], False
+        text = ""
+        try:
+            r = subprocess.run([sys.executable, "-m", "ktphane.worker", self.lib.abs_path(f), f["ext"], "mid"],
+                               capture_output=True, text=True, timeout=60,
+                               cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            text = (json.loads(r.stdout or "{}") or {}).get("mid", "")
+        except Exception as e:
+            log.info("Orta metin okunamadı %s: %s", f["path"], e)
+        self.mids[k] = text[:4000]
+        return self.mids[k], True
+
+    def _shingles(self, f, changed):
+        a = (self.lib.enricher.get(f["ckey"]) or {}) if getattr(self.lib, "enricher", None) else {}
+        mid, new = self._mid(f) if f["ext"] in ("epub", "pdf") else ("", False)
+        text = (a.get("sample") or "") + " " + mid
+        return _shingle_set(text), changed or new
 
     def auto_clean(self):
         """Otomatik mod: yalnızca 'kesin' kopyalar, analizi bitmiş ve yok sayılmamış olanlar."""
@@ -207,6 +274,22 @@ class Dedupe:
         done, _ = self.lib.trash.delete(ids, title="Otomatik kopya temizliği")
         log.info("Otomatik kopya temizliği: %d dosya silindi", len(done))
         return len(done)
+
+
+def _shingle_set(text):
+    """Metnin 4 kelimelik parçalarının özetleri. Az metin varsa None (karşılaştırılamaz)."""
+    from .textutil import words
+    w = words(text)
+    if len(w) < 120:
+        return None
+    return {hash(" ".join(w[i:i + 4])) for i in range(len(w) - 3)}
+
+
+def _containment(a, b):
+    """İki metnin ortak parça oranı (küçük olana göre). Karşılaştırılamıyorsa None."""
+    if not a or not b:
+        return None
+    return round(len(a & b) / min(len(a), len(b)), 2)
 
 
 _EDITION = re.compile(r"\b(tam metin|orijinal|orjinal|yeni baski|genisletilmis|gozden gecirilmis|"

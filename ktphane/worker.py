@@ -68,7 +68,12 @@ def run(path, ext):
 
 if __name__ == "__main__":
     try:
-        res = run(sys.argv[1], sys.argv[2])
+        if len(sys.argv) > 3 and sys.argv[3] == "mid":
+            warnings.filterwarnings("ignore")
+            from . import content
+            res = {"mid": content.mid_text(sys.argv[2], sys.argv[1])}
+        else:
+            res = run(sys.argv[1], sys.argv[2])
     except Exception as e:  # bozuk dosya
         res = {"error": f"{type(e).__name__}: {e}"[:300]}
     sys.stdout.write(json.dumps(res, ensure_ascii=False))

@@ -217,3 +217,42 @@ def text_layer_ok(text):
     avg = sum(len(t) for t in toks) / len(toks)
     # gerçek metinde bağlaç/edat oranı ~%10-40; çöp OCR'da ~%0-3 ve çok kısa/çok uzun "kelimeler"
     return hits / len(toks) >= 0.04 and 2.5 <= avg <= 12
+
+
+# ---------- kitabın ortasından örnek (kopya karşılaştırması için) ----------
+def mid_text(ext, path, limit=4000):
+    """Kitabın ortasından metin. Ön kapak/künye farklı olsa da aynı baskı/çevirinin
+    gövde metni aynıdır; kopya tespiti bunu karşılaştırır."""
+    if ext == "epub":
+        with zipfile.ZipFile(path) as z:
+            try:
+                opf_path = ET.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", NS).get("full-path")
+                opf = ET.fromstring(z.read(opf_path))
+                base = posixpath.dirname(opf_path)
+                items = {i.get("id"): i for i in opf.iter() if i.tag.endswith("item")}
+                names = [posixpath.normpath(posixpath.join(base, items[r.get("idref")].get("href", "").split("#")[0]))
+                         for r in opf.iter() if r.tag.endswith("itemref") and r.get("idref") in items]
+            except Exception:
+                names = sorted(n for n in z.namelist() if n.lower().endswith((".xhtml", ".html", ".htm")))
+            out, total = [], 0
+            for n in names[len(names) // 2:]:
+                try:
+                    t = _clean(z.read(n).decode("utf-8", "ignore"))
+                except KeyError:
+                    continue
+                out.append(t)
+                total += len(t)
+                if total >= limit:
+                    break
+            return " ".join(out)[:limit]
+    if ext == "pdf":
+        from pypdf import PdfReader
+        r = PdfReader(path, strict=False)
+        if r.is_encrypted:
+            r.decrypt("")
+        n = len(r.pages)
+        out = ""
+        for i in range(n // 2, min(n, n // 2 + 3)):
+            out += (r.pages[i].extract_text() or "") + " "
+        return WS_RE.sub(" ", out).strip()[:limit] if text_layer_ok(out) else ""
+    return ""
