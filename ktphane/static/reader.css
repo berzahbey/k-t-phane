@@ -131,12 +131,12 @@ dialog.note .acts { display: flex; gap: 8px; justify-content: flex-end; margin-t
 #pdfwrap.zoomed { overflow: auto; display: block; touch-action: auto; }
 .pg { position: relative; background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18); flex: none; }
 #pdfwrap.scroll .pg { margin: 0 auto 12px; }
-.pg canvas { display: block; width: 100%; height: 100%; }
+.pg canvas, .pg img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .pg .ph { position: absolute; inset: 0; display: grid; place-items: center; color: #999; font-size: 13px; }
 .pg .pnum { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); }
-body.pf-sepia .pg canvas { filter: sepia(.35) saturate(1.1) brightness(.97); }
-body.pf-invert .pg canvas { filter: invert(.88) hue-rotate(180deg) contrast(.95); }
-body.pf-dim .pg canvas { filter: brightness(.82); }
+body.pf-sepia .pg canvas, body.pf-sepia .pg img { filter: sepia(.35) saturate(1.1) brightness(.97); }
+body.pf-invert .pg canvas, body.pf-invert .pg img { filter: invert(.88) hue-rotate(180deg) contrast(.95); }
+body.pf-dim .pg canvas, body.pf-dim .pg img { filter: brightness(.82); }
 .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; opacity: 1; text-size-adjust: none; -webkit-text-size-adjust: none; }
 .textLayer span, .textLayer br { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
 .textLayer ::selection { background: rgba(0, 100, 255, .28); }

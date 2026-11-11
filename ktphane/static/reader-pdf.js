@@ -8,6 +8,13 @@
   let pdf = null, pages = 0, cur = 1, zoom = 1, outline = [], baseVp = null, selCtx = null, gen = 0;
   const pageCache = new Map(), textCache = new Map(), vpCache = new Map();
   let searchHit = null;
+  // Görüntü modu: taranmış/büyük PDF'lerde sayfalar sunucuda çizilip küçük görüntü olarak gelir
+  let IMG = INFO.mode === "image";
+  const WIDTHS = [480, 720, 960, 1280, 1600, 2000, 2400];
+  const imgUrl = (n, cssW) => {
+    const want = cssW * Math.min(window.devicePixelRatio || 1, 2.5);
+    return `/api/pdf/${INFO.id}/page/${n}?w=${WIDTHS.find((x) => want <= x) || 2400}`;
+  };
 
   const getPage = (n) => { if (!pageCache.has(n)) pageCache.set(n, pdf.getPage(n)); return pageCache.get(n); };
   const isSpread = () => S.pdfMode === "spread" && wrap.clientWidth >= 700 && wrap.clientWidth > wrap.clientHeight * 0.9;
@@ -30,7 +37,22 @@
     el.innerHTML = `<div class="ph">${n}</div>`;
     return el;
   }
+  async function drawImgPage(el, n, cssScale, myGen) {
+    const v = vpCache.get(n) || baseVp;
+    const w = Math.floor(v.width * cssScale), h = Math.floor(v.height * cssScale);
+    el.style.width = w + "px"; el.style.height = h + "px";
+    const img = new Image(); img.decoding = "async"; img.alt = ""; img.draggable = false;
+    img.src = imgUrl(n, w);
+    try { await img.decode(); } catch { if (!img.complete || !img.naturalWidth) { el.innerHTML = `<div class="ph">${n} · yüklenemedi</div>`; return; } }
+    if (myGen !== gen && S.pdfMode !== "scroll") return;
+    el.innerHTML = ""; el.appendChild(img);
+    el.dataset.rendered = cssScale;
+    const hl = document.createElement("div"); hl.className = "hl-layer"; el.appendChild(hl);
+    const pn = document.createElement("div"); pn.className = "pnum"; pn.textContent = n; el.appendChild(pn);
+    drawNotes(el, n);
+  }
   async function drawPage(el, n, cssScale, myGen) {
+    if (IMG) return drawImgPage(el, n, cssScale, myGen);
     const page = await getPage(n);
     if (myGen !== gen) return;
     const vp = page.getViewport({ scale: cssScale });
@@ -106,7 +128,10 @@
     if (zoom > 1.01) { wrap.scrollLeft = (wrap.scrollWidth - wrap.clientWidth) / 2; wrap.scrollTop = 0; }
     await Promise.all(order.map((n, i) => drawPage(els[i], n, scale, myGen)));
     // sonraki sayfaları önceden hazırla
-    for (let k = 1; k <= 2; k++) if (cur + k <= pages) getPage(cur + k);
+    for (let k = 1; k <= 2; k++) if (cur + k <= pages) {
+      if (IMG) { const v = vpCache.get(cur + k) || baseVp; new Image().src = imgUrl(cur + k, Math.floor(v.width * scale)); }
+      else getPage(cur + k);
+    }
     afterMove();
   }
   let io = null, scrollScale = 1;
@@ -311,6 +336,7 @@
     const token = ++searchToken, box = $("#searchResults"), nq = norm(q.trim());
     if (nq.length < 2) { box.innerHTML = '<div class="empty">En az 2 harf yazın.</div>'; return; }
     box.innerHTML = '<div class="empty" id="sProg">Aranıyor…</div>';
+    if (IMG) return searchServer(q, nq, token, box);
     const results = []; let textChars = 0;
     for (let n = 1; n <= pages && results.length < 300; n++) {
       if (token !== searchToken) return;
@@ -329,6 +355,9 @@
     if (!results.length && textChars < pages * 20) {
       box.innerHTML = '<div class="empty">Bu PDF taranmış görüntülerden oluşuyor, içinde aranabilir metin yok.<br>Sayfa numarası veya içindekilerle gezinebilirsiniz.</div>'; return;
     }
+    showResults(results, nq, box);
+  }
+  function showResults(results, nq, box) {
     box.innerHTML = results.length
       ? `<div class="empty" style="padding:4px 0 10px">${results.length}${results.length >= 300 ? "+" : ""} sonuç</div>` + results.map((r, i) =>
         `<div class="list-item search-hit" data-r="${i}"><div class="meta">Sayfa ${r.page}${chapterOf(r.page) ? " · " + R.esc(chapterOf(r.page)) : ""}</div><div dir="auto">…${R.esc(r.pre)}<mark>${R.esc(r.hit)}</mark>${R.esc(r.post)}…</div></div>`).join("")
@@ -340,6 +369,13 @@
       if (S.pdfMode === "scroll") { const el = wrap.querySelector(`.pg[data-page="${r.page}"] .textLayer`); if (el) markSearch(el, nq); }
       goTo(r.page, { flash: true });
     };
+  }
+  async function searchServer(q, nq, token, box) {
+    let d;
+    try { d = await (await fetch(`/api/pdf/${INFO.id}/search?q=${encodeURIComponent(q.trim())}`)).json(); } catch { box.innerHTML = '<div class="empty">Arama yapılamadı.</div>'; return; }
+    if (token !== searchToken) return;
+    if (!d.results.length && !d.has_text) { box.innerHTML = '<div class="empty">Bu PDF taranmış görüntülerden oluşuyor, içinde aranabilir metin yok.<br>Sayfa numarası veya içindekilerle gezinebilirsiniz.</div>'; return; }
+    showResults(d.results, nq, box);
   }
   $("#searchForm").addEventListener("submit", (e) => { e.preventDefault(); search($("#searchInput").value); });
 
@@ -362,19 +398,43 @@
   };
 
   applyFilter();
-  R.init(engine).then(async ({ start }) => {
+  async function openImageMode() {
+    const d = await (await fetch(`/api/pdf/${INFO.id}/info`)).json();
+    if (d.error) throw new Error(d.error);
+    IMG = true; pages = d.pages;
+    d.sizes.forEach(([w, h], i) => vpCache.set(i + 1, { width: w, height: h }));
+    baseVp = vpCache.get(1) || { width: 595, height: 842 };
+    outline = d.outline || [];
+  }
+  async function openPdfJs() {
+    const task = pdfjsLib.getDocument({
+      url: INFO.file, cMapUrl: V + "cmaps/", cMapPacked: true, standardFontDataUrl: V + "standard_fonts/",
+      rangeChunkSize: 262144, disableAutoFetch: true, disableStream: true, isEvalSupported: false,
+    });
+    // Dosyanın iç dizini bozuksa pdf.js tamamını indirmek zorunda kalır; 8 sn'de açılmazsa görüntü moduna geç
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("yavaş")), 8000));
+    try { pdf = await Promise.race([task.promise, timeout]); }
+    catch (e) { task.destroy(); throw e; }
+    pages = pdf.numPages;
+    baseVp = (await getPage(1)).getViewport({ scale: 1 });
+    vpCache.set(1, baseVp);
+  }
+  const ready = R.init(engine);
+  (async () => {
     try {
-      pdf = await pdfjsLib.getDocument({
-        url: INFO.file, cMapUrl: V + "cmaps/", cMapPacked: true, standardFontDataUrl: V + "standard_fonts/",
-        rangeChunkSize: 262144, disableAutoFetch: true, isEvalSupported: false,
-      }).promise;
+      if (IMG) await openImageMode();
+      else {
+        try { await openPdfJs(); }
+        catch (e) {
+          $("#msg").innerHTML = '<div><div class="spinner"></div>Büyük dosya, hızlı görünüme geçiliyor…</div>';
+          await openImageMode();
+        }
+      }
     } catch (e) {
       $("#msg").innerHTML = `<div>PDF açılamadı.<br><small>${R.esc(e?.message || e)}</small><br><br><a href="${INFO.download}">Dosyayı indir</a></div>`;
       return;
     }
-    pages = pdf.numPages;
-    baseVp = (await getPage(1)).getViewport({ scale: 1 });
-    vpCache.set(1, baseVp);
+    const { start } = await ready;
     $("#pageTotal").textContent = pages;
     $("#slider").max = pages; $("#slider").min = 1;
     cur = Math.max(1, Math.min(pages, start?.page || (start?.percent ? Math.round(start.percent * (pages - 1)) + 1 : 1)));
@@ -382,12 +442,12 @@
     $("#msg").hidden = true;
     await render();
     setTimeout(() => { if ($("#settings").hidden && !$("#drawer").classList.contains("open")) R.setImmersive(true); }, 2500);
-    loadOutline();
-  });
+    if (!IMG) loadOutline(); else afterMove();
+  })();
 
   $("#slider").addEventListener("input", (e) => { $("#miniBot").textContent = $("#pct").textContent = `s. ${e.target.value}`; });
   $("#slider").addEventListener("change", (e) => goTo(+e.target.value));
   $("#pageInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); goTo(parseInt(e.target.value, 10)); e.target.blur(); } });
   $("#pageInput").addEventListener("focus", (e) => e.target.select());
-  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => pdf && render(), 250); });
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => pages && render(), 250); });
 })();

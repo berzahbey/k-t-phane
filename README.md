@@ -29,7 +29,9 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   yerden devam eder; başka cihazda ilerlediysen haber verir. Ana sayfada "Okumaya devam et" satırı.
   Osmanlıca/Arapça/Farsça kitaplar sağdan sola açılır, Amiri ve Noto Naskh yazı tipleri gömülüdür.
   PDF'lerde sepya / kısık / ters (gece) renk, yakınlaştırma (iki parmak, Mac trackpad), sayfaya gitme,
-  PDF'in kendi içindekiler listesi ve seçilebilir metin üzerinde vurgu.
+  PDF'in kendi içindekiler listesi ve seçilebilir metin üzerinde vurgu. Taranmış ve büyük PDF'ler
+  (`PDF_IMAGE_MB`, varsayılan 60) sunucuda sayfa sayfa küçük görüntüye çevrilir (`/data/sayfalar`,
+  `PAGE_CACHE_MB` varsayılan 3000): yüzlerce MB'lık kitaplar telefonda da hemen açılır.
 - **Klasör düzenleme**: Kitapları `Dil / Konu / EPUB` ve `Dil / Konu / PDF / Metin|OCR` yapısına taşır.
   Önce önizleme gösterir; onaydan sonra yeni eklenen kitaplar da otomatik düzenlenir. Dosya silinmez,
   her taşıma kaydedilir ve “Son düzenlemeyi geri al” ile geri döndürülebilir. Bir kitabı elle başka bir

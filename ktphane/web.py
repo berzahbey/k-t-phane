@@ -10,6 +10,11 @@ from . import __version__
 from .categories import category_tree
 from .library import Library
 from . import organizer
+from . import pdfpages
+
+# Bu boyuttan büyük PDF'ler de görüntü moduyla açılır (pdf.js tüm dosyayı indirmek zorunda kalabiliyor)
+PDF_IMAGE_MB = int(os.environ.get("PDF_IMAGE_MB", "60"))
+log = logging.getLogger("ktphane.web")
 
 MIME = {"epub": "application/epub+zip", "pdf": "application/pdf", "mobi": "application/x-mobipocket-ebook",
         "azw3": "application/vnd.amazon.ebook", "azw": "application/vnd.amazon.ebook",
@@ -305,6 +310,9 @@ def create_app():
                 "title": (book or {}).get("title") or rec.get("title") or rec["name"],
                 "author": (book or {}).get("author") or "", "lang": lang,
                 "rtl": lang in RTL_LANGS, "scanned": bool(fmt and fmt.get("needs_ocr")),
+                # Taranmış veya çok büyük PDF'ler sunucuda sayfa sayfa görüntüye çevrilir (telefonda hızlı açılır)
+                "mode": "image" if rec["ext"] == "pdf" and (bool(fmt and fmt.get("needs_ocr"))
+                                                            or (fmt or {}).get("size", 0) > PDF_IMAGE_MB * 1024 * 1024) else "",
                 "file": f"/file/{fid}", "download": f"/download/{fid}"}
         if rec["ext"] == "epub":
             return render_template("reader.html", info=info, version=__version__)
@@ -339,6 +347,43 @@ def create_app():
     @app.delete("/api/reading/<fid>/notes/<nid>")
     def reading_note_delete(fid, nid):
         return jsonify(ok=lib.reading.delete_note(_ckey_of(fid), nid))
+
+    # ---------- PDF sayfa görüntüleri (taranmış / büyük PDF'ler) ----------
+    def _pdf(fid):
+        rec, _ = _rec(fid)
+        if rec["ext"] != "pdf":
+            abort(404)
+        return lib.abs_path(rec), _ckey_of(fid) or fid
+
+    @app.get("/api/pdf/<fid>/info")
+    def pdf_info(fid):
+        path, ckey = _pdf(fid)
+        try:
+            return jsonify(pdfpages.info(path, ckey))
+        except Exception as e:
+            log.warning("PDF açılamadı %s: %s", path, e)
+            return jsonify(error=f"PDF açılamadı: {e}"), 500
+
+    @app.get("/api/pdf/<fid>/page/<int:n>")
+    def pdf_page(fid, n):
+        path, ckey = _pdf(fid)
+        try:
+            w = int(request.args.get("w", 1280))
+        except ValueError:
+            w = 1280
+        try:
+            out = pdfpages.page_image(path, ckey, lib.data_dir, n, w)
+        except Exception as e:
+            log.warning("Sayfa çizilemedi %s s.%d: %s", path, n, e)
+            abort(500)
+        if not out:
+            abort(404)
+        return send_file(out, mimetype="image/webp", max_age=86400 * 30)
+
+    @app.get("/api/pdf/<fid>/search")
+    def pdf_search(fid):
+        path, ckey = _pdf(fid)
+        return jsonify(pdfpages.search(path, ckey, request.args.get("q", "")))
 
     @app.get("/api/reading/recent")
     def reading_recent():
