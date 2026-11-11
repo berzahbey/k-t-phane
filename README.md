@@ -21,8 +21,15 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   klasör adları, yazar adları ve Arapça başlıklar dikkate alınır.
 - **Arayüz**: anlık arama, kategori ağacı, dil/format/durum filtreleri, kart ve liste görünümü,
   sıralama, kitap detay penceresi, mobil uyum, açık/koyu tema.
-- **EPUB okuyucu**: içindekiler, sayfa çevirme (ok tuşları / kaydırma), yazı boyutu, açık-sepya-koyu tema,
-  kaldığı yeri hatırlama. PDF'ler tarayıcının kendi görüntüleyicisinde açılır.
+- **Okuyucu (EPUB ve PDF)**: iPhone, iPad, Mac ve Android tablette rahat okuma. 6 tema (açık, sepya, yeşil,
+  gri, koyu, siyah), yazı boyutu, yazı tipi, satır aralığı, kenar boşluğu, iki yana hizalama, sayfa sayfa
+  veya kaydırarak okuma, geniş ekranda çift sayfa. Vurgu (5 renk), not, yer imi; notlar Markdown olarak
+  dışa aktarılır. Kitap içinde arama (Osmanlıca/Arapça harekeler ve Türkçe harfler esnek eşleşir).
+  **Kaldığın yer ve notlar sunucuda** (`/data/okuma.json`) tutulur: hangi cihazdan açarsan aç kaldığın
+  yerden devam eder; başka cihazda ilerlediysen haber verir. Ana sayfada "Okumaya devam et" satırı.
+  Osmanlıca/Arapça/Farsça kitaplar sağdan sola açılır, Amiri ve Noto Naskh yazı tipleri gömülüdür.
+  PDF'lerde sepya / kısık / ters (gece) renk, yakınlaştırma (iki parmak, Mac trackpad), sayfaya gitme,
+  PDF'in kendi içindekiler listesi ve seçilebilir metin üzerinde vurgu.
 - **Klasör düzenleme**: Kitapları `Dil / Konu / EPUB` ve `Dil / Konu / PDF / Metin|OCR` yapısına taşır.
   Önce önizleme gösterir; onaydan sonra yeni eklenen kitaplar da otomatik düzenlenir. Dosya silinmez,
   her taşıma kaydedilir ve “Son düzenlemeyi geri al” ile geri döndürülebilir. Bir kitabı elle başka bir

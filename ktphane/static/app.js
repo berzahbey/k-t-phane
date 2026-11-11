@@ -48,10 +48,35 @@
       }));
       render();
       updateStatus(d.status);
+      loadRecent();
     } catch (e) {
       showNotice("Kitap listesi alınamadı. Sunucu çalışıyor mu? (" + e.message + ")");
     }
   }
+
+  // ---------- okumaya devam et ----------
+  state.recent = [];
+  const ago = (ms) => { const s = (Date.now() - ms) / 1000; return s < 3600 ? Math.max(1, Math.round(s / 60)) + " dk önce" : s < 86400 ? Math.round(s / 3600) + " saat önce" : Math.round(s / 86400) + " gün önce"; };
+  async function loadRecent() {
+    try { const d = await (await fetch("/api/reading/recent", { cache: "no-store" })).json(); state.recent = d.items || []; } catch { state.recent = []; }
+    renderRecent();
+  }
+  function renderRecent() {
+    const sec = $("#continue"); if (!sec) return;
+    const plain = !state.q && !state.cat && !state.sub && !state.favOnly;
+    sec.hidden = !plain || !state.recent.length;
+    $("#contRow").innerHTML = state.recent.map((r) => {
+      const pct = Math.round((r.percent || 0) * 100);
+      const where = r.page && r.pages ? `s. ${r.page}/${r.pages}` : `%${pct}`;
+      return `<a class="cont" href="/read/${r.file_id}" target="_blank" rel="noopener" title="${esc(r.title)}">
+        ${coverHtml({ id: r.book_id, title: r.title, author: r.author, cover_id: r.cover_id, formats: [] }, false)}
+        <div class="ci"><div class="ct" ${isRtl(r.title) ? 'dir="rtl"' : ""}>${esc(r.title)}</div><div class="ca">${esc(r.author || "")}</div>
+        <div class="cbar"><i style="width:${pct}%"></i></div>
+        <div class="cm">${where} · ${r.ext.toUpperCase()} · ${esc(r.device || "")} · ${ago(r.updated)}${r.notes ? ` · ${r.notes} not` : ""}</div></div></a>`;
+    }).join("");
+    $("#contRow").querySelectorAll("img[data-src]").forEach((img) => { img.addEventListener("load", () => img.classList.add("ok"), { once: true }); img.addEventListener("error", () => img.remove(), { once: true }); img.src = img.dataset.src; img.removeAttribute("data-src"); });
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadRecent(); });
 
   let pollTimer = null;
   function updateStatus(s) {
@@ -144,6 +169,7 @@
     const n = state.filtered.reduce((t, x) => t + (x.isCollection ? x.volumes.length : 1), 0);
     $("#resultCount").textContent = `${n.toLocaleString("tr")} kitap` + (n !== state.books.length ? ` · toplam ${state.books.length.toLocaleString("tr")}` : "");
     renderActiveChips();
+    renderRecent();
     const empty = $("#empty");
     if (!n) {
       empty.hidden = false;
@@ -274,7 +300,7 @@
     const vols = c.volumes.map((v) => {
       const btns = v.formats.map((f) => {
         const readable = (f.ext === "epub" || f.ext === "pdf" || f.ext === "txt") && !f.broken;
-        const url = f.ext === "epub" ? `/read/${f.id}` : `/file/${f.id}`;
+        const url = f.ext === "epub" || f.ext === "pdf" ? `/read/${f.id}` : `/file/${f.id}`;
         return (readable ? `<a class="btn primary sm" href="${url}" target="_blank" rel="noopener">Oku ${f.ext.toUpperCase()}</a>` : "") +
           `<a class="btn sm" href="/download/${f.id}" title="İndir">↓</a>`;
       }).join("");
@@ -316,8 +342,9 @@
     ].filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
     const formats = b.formats.map((f) => {
       const readable = (f.ext === "epub" || f.ext === "pdf" || f.ext === "txt") && !f.broken;
-      const readUrl = f.ext === "epub" ? `/read/${f.id}` : `/file/${f.id}`;
-      const extra = [fmtSize(f.size), f.pages ? f.pages + " sayfa" : "", f.error ? `<span style="color:var(--warn)">${esc(f.error)}</span>` : ""].filter(Boolean).join(" · ");
+      const readUrl = f.ext === "epub" || f.ext === "pdf" ? `/read/${f.id}` : `/file/${f.id}`;
+      const rp = state.recent.find((r) => r.file_id === f.id);
+      const extra = [fmtSize(f.size), f.pages ? f.pages + " sayfa" : "", rp ? `<span class="readpos">Kaldığın yer %${Math.round((rp.percent || 0) * 100)}</span>` : "", f.error ? `<span style="color:var(--warn)">${esc(f.error)}</span>` : ""].filter(Boolean).join(" · ");
       return `<div class="fmt-row"><div class="info"><div class="badges">${badgesHtml({ formats: [f], language: b.language }).replace(/<span class="badge lang">.*$/, "")}</div><div class="fn" title="${esc(f.path)}">${esc(f.name)} · ${extra}</div></div>
         ${readable ? `<a class="btn primary" href="${readUrl}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2zM22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg>Oku</a>` : ""}
         <a class="btn" href="/download/${f.id}"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>İndir</a>

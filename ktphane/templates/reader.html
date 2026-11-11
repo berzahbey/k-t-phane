@@ -1,127 +1,98 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{ title }} · Kitaplık</title>
-  <style>
-    :root { --bg:#faf8f3; --fg:#22211e; --muted:#7a776f; --bar:#ffffffd9; --border:#e3dfd5; --accent:#2f6f62; }
-    body.sepia { --bg:#f4ecd8; --fg:#3b3226; --bar:#f4ecd8e6; --border:#dccfb2; }
-    body.dark { --bg:#161614; --fg:#dddbd3; --muted:#8f8c84; --bar:#1d1d1be6; --border:#34342f; --accent:#6cbfab; }
-    * { box-sizing:border-box; } html,body { margin:0; height:100%; }
-    body { background:var(--bg); color:var(--fg); font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; overflow:hidden; }
-    header { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--border); background:var(--bar); backdrop-filter:blur(8px); z-index:5; }
-    header .title { flex:1; min-width:0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 6px; }
-    button, a.b { display:inline-grid; place-items:center; min-width:36px; height:36px; padding:0 8px; border-radius:8px; border:0; background:transparent; color:inherit; cursor:pointer; font:inherit; text-decoration:none; }
-    button:hover, a.b:hover { background:color-mix(in srgb, var(--fg) 9%, transparent); }
-    svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
-    main { position:relative; flex:1; min-height:0; }
-    #viewer { position:absolute; inset:0 48px; }
-    .nav { position:absolute; top:0; bottom:0; width:48px; display:grid; place-items:center; color:var(--muted); z-index:2; border-radius:0; height:auto; }
-    .nav.prev { left:0; } .nav.next { right:0; }
-    footer { display:flex; align-items:center; gap:10px; padding:6px 14px 10px; color:var(--muted); font-size:12px; }
-    footer input { flex:1; accent-color:var(--accent); }
-    #toc { position:fixed; top:0; bottom:0; left:0; width:min(340px,86vw); background:var(--bg); border-right:1px solid var(--border); transform:translateX(-102%); transition:transform .2s; z-index:20; display:flex; flex-direction:column; box-shadow:0 0 30px rgba(0,0,0,.2); }
-    #toc.open { transform:none; }
-    #toc h3 { margin:0; padding:16px; font-size:14px; border-bottom:1px solid var(--border); }
-    #toc ol { list-style:none; margin:0; padding:8px; overflow:auto; }
-    #toc li a { display:block; padding:7px 10px; border-radius:6px; color:inherit; text-decoration:none; }
-    #toc li a:hover { background:color-mix(in srgb, var(--fg) 8%, transparent); }
-    #toc li li a { padding-left:24px; font-size:13px; color:var(--muted); }
-    #msg[hidden] { display:none; }
-    #msg { position:absolute; inset:0; display:grid; place-items:center; color:var(--muted); text-align:center; padding:20px; }
-    .sep { width:1px; height:22px; background:var(--border); margin:0 2px; }
-    @media (max-width:600px) { #viewer { inset:0 10px; } .nav { width:30%; opacity:0; } .hide-sm { display:none; } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf7f0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>{{ info.title }} · Kitaplık</title>
+<link rel="stylesheet" href="/static/fonts/fonts.css?v={{ version }}">
+<link rel="stylesheet" href="/static/reader.css?v={{ version }}">
+<script>window.BOOK = {{ info | tojson }};</script>
 </head>
-<body>
-<header>
-  <a class="b" href="/" title="Kütüphane"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
-  <button id="btnToc" title="İçindekiler"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
-  <div class="title">{{ title }}</div>
-  <button id="smaller" title="Yazıyı küçült">A−</button>
-  <button id="bigger" title="Yazıyı büyüt">A+</button>
-  <span class="sep hide-sm"></span>
-  <button id="theme" title="Tema (açık / sepya / koyu)"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
-  <a class="b hide-sm" href="/download/{{ rec.id }}" title="İndir"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg></a>
+<body class="{{ 'rtl-book' if info.rtl else '' }}">
+<header class="bar topbar">
+  <a class="ib" href="/" title="Kitaplığa dön"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+  <button class="ib" id="btnToc" title="İçindekiler"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+  <div class="tb-title"><div class="t" dir="auto">{{ info.title }}</div><div class="s" dir="auto" id="subTitle">{{ info.author }}</div></div>
+  <button class="ib" id="btnSearch" title="Kitapta ara"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+  <button class="ib" id="btnNotes" title="Notlar ve vurgular"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-4-3H5z"/><path d="M9 9h6M9 12h4"/></svg></button>
+  <button class="ib" id="btnBookmark" title="Yer imi"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg></button>
+  <button class="ib" id="btnSettings" title="Görünüm: tema, yazı boyutu"><span class="aa">Aa</span></button>
+  <button class="ib" id="btnFull" title="Tam ekran"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
 </header>
-<main>
-  <button class="nav prev" id="prev" aria-label="Önceki sayfa"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
-  <div id="viewer"></div>
-  <button class="nav next" id="next" aria-label="Sonraki sayfa"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
-  <div id="msg">Kitap açılıyor…</div>
+
+<main id="stage">
+  {% if info.ext == 'pdf' %}<div id="viewer"><div id="pdfwrap"></div></div>{% else %}<div id="viewer"></div>{% endif %}
 </main>
-<footer><span id="chapter"></span><input type="range" id="seek" min="0" max="1000" value="0" disabled><span id="pct">–</span></footer>
-<nav id="toc"><h3>İçindekiler</h3><ol id="tocList"></ol></nav>
+<div class="mini top" id="miniTop" dir="auto"></div><div class="mini bot" id="miniBot"></div>
+<div id="msg"><div><div class="spinner"></div>Kitap açılıyor…</div></div>
 
-<script src="{{ url_for('static', filename='vendor/jszip.min.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor/epub.min.js') }}"></script>
-<script>
-(() => {
-  const id = {{ rec.id|tojson }};
-  const key = (k) => "kt.reader." + k;
-  const get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
-  const set = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
-  const $ = (s) => document.querySelector(s);
+<footer class="bar bottombar">
+  <div class="prog-row">
+    <span class="chap" id="chap" dir="auto"></span>
+    {% if info.ext == 'pdf' %}<span><input class="page-input" id="pageInput" inputmode="numeric" aria-label="Sayfa"> / <span id="pageTotal">–</span></span>{% endif %}
+    <span class="pct" id="pct"></span>
+  </div>
+  <div class="prog-row"><input type="range" id="slider" min="0" max="1000" value="0" aria-label="Kitapta konum"></div>
+</footer>
 
-  const THEMES = {
-    light: { body: { background: "#faf8f3", color: "#22211e" } },
-    sepia: { body: { background: "#f4ecd8", color: "#3b3226" } },
-    dark:  { body: { background: "#161614", color: "#dddbd3" }, a: { color: "#6cbfab" } },
-  };
-  let theme = get(key("theme"), matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  let size = parseInt(get(key("size"), "105"), 10);
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><h3 dir="auto">{{ info.title }}</h3><button class="ib" id="btnCloseDrawer" title="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="tabs">
+    <button data-tab="toc">İçindekiler</button>
+    <button data-tab="notes">Notlar <span id="notesCount"></span></button>
+    <button data-tab="search">Ara</button>
+  </div>
+  <div class="drawer-body">
+    <div class="pane toc" data-pane="toc" id="tocBox"></div>
+    <div class="pane" data-pane="notes" hidden>
+      <div class="export-row">
+        <div class="seg"><button data-nkind="all" class="on">Tümü</button><button data-nkind="notes">Notlar</button><button data-nkind="bookmark">Yer imleri</button></div>
+        <button class="btn" id="btnExport" title="Notları Markdown dosyası olarak indir">Dışa aktar</button>
+      </div>
+      <button class="btn addnote" id="btnAddNote">+ Buraya not ekle</button>
+      <div id="notesList" data-kind="all"></div>
+    </div>
+    <div class="pane" data-pane="search" hidden>
+      <form class="search-box" id="searchForm"><input id="searchInput" type="search" placeholder="Kelime veya ifade…" dir="auto" autocomplete="off"><button class="btn primary">Ara</button></form>
+      <div id="searchResults"></div>
+    </div>
+  </div>
+</aside>
 
-  const book = ePub("/file/" + id, { openAs: "epub" });
-  const rendition = book.renderTo("viewer", { width: "100%", height: "100%", flow: "paginated", spread: "auto", allowScriptedContent: false });
-  Object.entries(THEMES).forEach(([n, t]) => rendition.themes.register(n, t));
-  const applyTheme = () => { document.body.className = theme === "light" ? "" : theme; rendition.themes.select(theme); };
-  const applySize = () => rendition.themes.fontSize(size + "%");
-  applyTheme(); applySize();
+<div class="sheet" id="settings" hidden><div id="settingsBody"></div></div>
 
-  const saved = get(key("pos." + id), null);
-  rendition.display(saved || undefined).then(() => { $("#msg").hidden = true; })
-    .catch((e) => { $("#msg").innerHTML = "Kitap açılamadı.<br><small>" + (e && e.message || e) + "</small><br><br><a href='/download/" + id + "'>Dosyayı indir</a>"; });
+<div class="selbar" id="selbar" hidden>
+  <button class="dot c-yellow" data-color="yellow" title="Sarı vurgu"></button>
+  <button class="dot c-green" data-color="green" title="Yeşil vurgu"></button>
+  <button class="dot c-blue" data-color="blue" title="Mavi vurgu"></button>
+  <button class="dot c-pink" data-color="pink" title="Pembe vurgu"></button>
+  <button class="dot c-orange" data-color="orange" title="Turuncu vurgu"></button>
+  <span class="sep"></span>
+  <button class="txtbtn" data-act="note">Not</button>
+  <button class="txtbtn" data-act="copy">Kopyala</button>
+  <button class="txtbtn" data-act="remove" hidden>Kaldır</button>
+</div>
 
-  book.ready.then(() => book.locations.generate(1200)).then(() => {
-    $("#seek").disabled = false;
-    const loc = rendition.currentLocation();
-    if (loc && loc.start) update(loc);
-  }).catch(() => {});
+<dialog class="note" id="noteDlg">
+  <h3 id="ndTitle" style="margin:0 0 10px;font-size:16px">Not ekle</h3>
+  <blockquote id="ndQuote" dir="auto"></blockquote>
+  <textarea id="ndText" dir="auto" placeholder="Notunuz…"></textarea>
+  <div class="acts"><button class="btn" id="ndCancel" type="button">Vazgeç</button><button class="btn primary" id="ndSave" type="button">Kaydet</button></div>
+</dialog>
 
-  book.loaded.navigation.then((nav) => {
-    const build = (items) => items.map((it) => `<li><a href="#" data-href="${it.href}">${(it.label || "").trim().replace(/</g, "&lt;")}</a>${it.subitems && it.subitems.length ? "<ol>" + build(it.subitems) + "</ol>" : ""}</li>`).join("");
-    $("#tocList").innerHTML = build(nav.toc) || "<li style='padding:10px;color:var(--muted)'>İçindekiler yok</li>";
-  });
-  $("#tocList").addEventListener("click", (e) => { const a = e.target.closest("a[data-href]"); if (!a) return; e.preventDefault(); rendition.display(a.dataset.href); $("#toc").classList.remove("open"); });
-
-  function update(loc) {
-    set(key("pos." + id), loc.start.cfi);
-    if (book.locations.length()) {
-      const p = book.locations.percentageFromCfi(loc.start.cfi);
-      $("#pct").textContent = Math.round(p * 100) + "%";
-      $("#seek").value = Math.round(p * 1000);
-    }
-    const item = book.navigation && book.navigation.get(loc.start.href);
-    $("#chapter").textContent = item ? item.label.trim() : "";
-  }
-  rendition.on("relocated", update);
-  $("#seek").addEventListener("change", (e) => rendition.display(book.locations.cfiFromPercentage(e.target.value / 1000)));
-
-  const prev = () => rendition.prev(), next = () => rendition.next();
-  $("#prev").onclick = prev; $("#next").onclick = next;
-  const onKey = (e) => { if (e.key === "ArrowLeft") prev(); if (e.key === "ArrowRight" || e.key === " ") next(); if (e.key === "Escape") $("#toc").classList.remove("open"); };
-  document.addEventListener("keyup", onKey); rendition.on("keyup", onKey);
-  // dokunmatik kaydırma
-  let sx = null;
-  rendition.on("touchstart", (e) => { sx = e.changedTouches[0].screenX; });
-  rendition.on("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].screenX - sx; if (Math.abs(dx) > 50) (dx < 0 ? next : prev)(); sx = null; });
-
-  $("#btnToc").onclick = () => $("#toc").classList.toggle("open");
-  $("#bigger").onclick = () => { size = Math.min(200, size + 10); set(key("size"), size); applySize(); };
-  $("#smaller").onclick = () => { size = Math.max(70, size - 10); set(key("size"), size); applySize(); };
-  $("#theme").onclick = () => { theme = { light: "sepia", sepia: "dark", dark: "light" }[theme]; set(key("theme"), theme); applyTheme(); };
-})();
-</script>
+<script src="/static/reader-core.js?v={{ version }}"></script>
+{% if info.ext == 'pdf' %}
+<script src="/static/vendor/pdfjs/pdf.min.js"></script>
+<script src="/static/reader-pdf.js?v={{ version }}"></script>
+{% else %}
+<script src="/static/vendor/jszip.min.js"></script>
+<script src="/static/vendor/epub.min.js"></script>
+<script src="/static/reader-epub.js?v={{ version }}"></script>
+{% endif %}
 </body>
 </html>

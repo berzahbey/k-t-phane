@@ -195,6 +195,9 @@ class Library:
             if fav and old in fav.keys:
                 fav.keys.discard(old)
                 fav.keys.add(new)
+            rd = getattr(self, "reading", None)
+            if rd:
+                rd.rekey(old, new)
             dd = getattr(self, "dedupe", None)
             if dd:
                 for store in (dd.hashes, dd.mids):
