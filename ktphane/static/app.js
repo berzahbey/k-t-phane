@@ -333,7 +333,7 @@
       ["Kategori", `${esc(b.category)} › ${esc(b.subcategory)}`],
       ["Neden", whyTxt],
       b.before_ai && ["Gemini'den önce", `<span class="muted">${esc(b.before_ai.cat)} › ${esc(b.before_ai.sub)}</span>`],
-      ["Gemini", { changed: "yerini değiştirdi", same: "önceki tahmini onayladı", unsure: "emin olamadı", waiting: "sırada bekliyor", failed: "cevap alınamadı", skipped: "sorulmadı (eski klasöre göre)", none: "kapalı" }[b.ai_state] || "—"],
+      ["Gemini", { changed: "yerini değiştirdi", same: "önceki tahmini onayladı", unsure: "emin olamadı", waiting: "sırada bekliyor", failed: "cevap alınamadı", skipped: "sorulmadı (eski klasöre göre)", manual: "sorulmadı (elle düzeltildiği için gerek yok)", none: "kapalı" }[b.ai_state] || "—"],
       ["Dil", esc(b.language)],
       b.year && ["Yıl", esc(b.year)],
       b.publisher && ["Yayınevi", esc(b.publisher)],

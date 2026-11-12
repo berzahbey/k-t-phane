@@ -593,6 +593,8 @@ class Library:
         if manual and manual.get("cat"):
             main, sub = manual["cat"], manual.get("sub") or "Genel"
             why = {"source": "manual", "conf": 1.0, "text": "Elle düzeltildi"}
+            if ai_state == "waiting":
+                ai_state = "manual"  # elle belirlenen kitap Gemini'ye sorulmaz; sırada beklemiyor
         g["category"], g["subcategory"] = main, sub
         g["ai_state"] = ai_state
         g["before_ai"] = before if ai_state == "changed" else None
