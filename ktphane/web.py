@@ -44,6 +44,8 @@ def create_app():
     lib.favorites = Favorites(lib)
     from .reading import Reading
     lib.reading = Reading(lib)
+    from .studio import Studio
+    lib.studio = Studio(lib)
     lib.start_background()
     lib.enricher.start()
     app.extensions["library"] = lib
@@ -244,6 +246,38 @@ def create_app():
             lib.set_pref("folder_strict", bool(d["folder_strict"]))
             lib.enricher.wake()
         return jsonify(prefs=lib.prefs)
+
+    # ---------- Dedplay Studio'ya gönder ----------
+    @app.get("/api/studio")
+    def studio_get():
+        return jsonify(lib.studio.public())
+
+    @app.post("/api/studio/send")
+    def studio_send():
+        d = request.get_json(silent=True) or {}
+        groups = [[i for i in g if isinstance(i, str)] for g in (d.get("books") or []) if isinstance(g, list)]
+        groups = [g for g in groups if g][:5000]
+        if not groups:
+            return jsonify(error="Kitap seçilmedi"), 400
+        res = lib.studio.enqueue(groups, force=bool(d.get("force")))
+        return jsonify(**res, **lib.studio.public())
+
+    @app.post("/api/studio/cancel")
+    def studio_cancel():
+        return jsonify(cancelled=lib.studio.cancel(), **lib.studio.public())
+
+    @app.post("/api/studio/settings")
+    def studio_settings():
+        d = request.get_json(silent=True) or {}
+        if "url" in d:
+            lib.studio.set_url(d.get("url") or "")
+        return jsonify(**lib.studio.check(), saved_url=lib.studio.url)
+
+    @app.post("/api/studio/forget")
+    def studio_forget():
+        d = request.get_json(silent=True) or {}
+        lib.studio.forget([k for k in d.get("ckeys") or [] if isinstance(k, str)])
+        return jsonify(ok=True)
 
     # ---------- favoriler ----------
     @app.post("/api/favorites")

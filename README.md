@@ -57,6 +57,13 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   İstenirse yeni eklenen kitaplara otomatik uygulanır (iki aşamalı onayla açılır).
 - **Toplu seçim**: “Seç” ile kitaplar/koleksiyonlar işaretlenir; “Görünenlerin tümünü seç” filtre ve aramayla
   birlikte çalışır; “Seçilenleri sil” aynı iki aşamalı onayla toplu siler.
+- **Dedplay Studio'ya gönder**: Tek kitap (detaydaki “Stüdyo'ya gönder”), bir koleksiyonun bütün ciltleri,
+  seçilen kitaplar ya da listede görünenlerin tamamı (örn. Din › Akaid ve Kelam kategorisini açıp üstteki
+  “Stüdyo'ya gönder”) tek seferde Studio'ya aktarılır. Her kitaptan en iyi tek dosya gider (EPUB › metin PDF ›
+  taranmış PDF › DOCX › TXT); Studio'da zaten olanlar atlanır. İki uygulama aynı kitap klasörünü gördüğü için
+  kitap kopyalanmaz, Studio dosyayı yerinden okur (görmüyorsa dosya yüklenir). Gönderim arka planda sırayla
+  yapılır; gönderilen kitaplarda kırmızı “Stüdyo” etiketi, Durum'da “Stüdyo'ya gönderildi / gönderilmedi”
+  filtresi var. Studio adresi otomatik bulunur; gerekirse ⚙ Ayarlar'dan girilir (`STUDIO_URL` de olur).
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)

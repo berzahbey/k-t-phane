@@ -72,6 +72,7 @@
         <p id="resultCount" class="muted"></p>
       </div>
       <div class="head-right"><div id="activeChips" class="chips"></div>
+        <button class="btn studio-btn" id="btnStudio" title="Listede görünen kitapları (kategori, arama ve filtrelerle birlikte) Dedplay Studio'ya gönder"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg>Stüdyo'ya gönder</button>
         <button class="btn" id="btnSelect" title="Birden fazla kitap seç"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/></svg>Seç</button>
         <button class="btn" id="btnSelectAll" title="Listede görünen bütün kitapları seç (arama ve filtrelerle birlikte)"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="14" height="14" rx="3"/><path d="M7 3h11a3 3 0 0 1 3 3v11"/><path d="m7 14 3 3 4-5"/></svg>Tümünü seç</button></div>
     </div>
@@ -132,6 +133,17 @@ Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
     <p class="muted small">Açıkken “Tarih”, “Felsefe” gibi adı bir kategoriyle aynı olan klasördeki kitaplar o kategoride
       kalır ve Gemini'ye sorulmaz. Eski klasörleriniz otomatik oluşturulmuş veya yanlışsa <b>kapatın</b>: klasör adı
       sadece ipucu olur, Gemini bu kitapları da inceler. Tek tek düzeltmek için kitap detayındaki “Yeri yanlış mı?” bölümünü kullanın.</p>
+    <h3 class="set-h" style="margin-top:26px">Dedplay Studio</h3>
+    <p class="muted small">Kitaplar “Stüdyo'ya gönder” ile Dedplay Studio'ya aktarılır. Adres boş bırakılırsa
+      sunucudaki Studio (port 8070) otomatik bulunur. Kitap kopyalanmaz: iki uygulama aynı kitap klasörünü görüyorsa
+      Studio dosyayı yerinden okur, görmüyorsa dosya yüklenir.</p>
+    <div id="stuStatus" class="org-card" hidden></div>
+    <label class="field"><span>Studio adresi (isteğe bağlı)</span>
+      <input id="stuUrl" type="text" autocomplete="off" spellcheck="false" placeholder="otomatik — örn. http://192.168.1.2:8070"></label>
+    <div class="org-actions">
+      <button class="btn primary" id="stuSave">Kaydet ve dene</button>
+      <button class="btn" id="stuTest">Bağlantıyı dene</button>
+    </div>
 
   </div>
 </dialog>
@@ -166,8 +178,16 @@ Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
   <button class="btn sm" id="selAll">Tümünü seç</button>
   <span class="grow"></span>
   <button class="btn" id="selCancel">Vazgeç</button>
+  <button class="btn studio-btn" id="selStudio" disabled><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg>Stüdyo'ya gönder</button>
   <button class="btn" id="selFav" disabled><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Favorilere ekle</button>
   <button class="btn danger-solid" id="selDelete" disabled><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Seçilenleri sil</button>
+</div>
+
+<div id="studioBar" class="studio-bar" hidden>
+  <span class="sb-ic"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg></span>
+  <div class="sb-main"><div id="studioText"></div><div class="sb-prog"><i id="studioProg"></i></div></div>
+  <button class="btn sm" id="studioStop">Durdur</button>
+  <button class="icon-btn sm" id="studioClose" aria-label="Kapat" hidden><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
 </div>
 
 <div id="toast" class="toast" hidden></div>

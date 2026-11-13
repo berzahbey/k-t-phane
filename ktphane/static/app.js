@@ -32,7 +32,14 @@
     ai_waiting: { label: "Gemini sırasında", test: (b) => b.ai_state === "waiting" },
     folder_locked: { label: "Eski klasöre göre", test: (b) => b.why?.source === "folder" },
     manual: { label: "Elle düzeltildi", test: (b) => !!b.manual },
+    studio_yes: { label: "Stüdyo'ya gönderildi", test: (b) => inStudio(b) },
+    studio_no: { label: "Stüdyo'ya gönderilmedi", test: (b) => !inStudio(b) && b.formats.some((f) => STUDIO_EXTS.includes(f.ext) && !f.broken) },
   };
+  // ---------- Dedplay Studio ----------
+  const STUDIO_EXTS = ["epub", "pdf", "docx", "txt"];
+  state.studio = { sent: {}, status: {} };
+  const studioOf = (b) => { for (const f of b.formats) { const s = state.studio.sent[f.ckey]; if (s && (s.s === "sent" || s.s === "skipped")) return s; } return null; };
+  const inStudio = (b) => !!studioOf(b);
   const fmtGroup = (ext) => (ext === "epub" || ext === "pdf" ? ext.toUpperCase() : "Diğer");
 
   // ---------- veri ----------
@@ -49,6 +56,7 @@
       render();
       updateStatus(d.status);
       loadRecent();
+      loadStudio();
     } catch (e) {
       showNotice("Kitap listesi alınamadı. Sunucu çalışıyor mu? (" + e.message + ")");
     }
@@ -206,7 +214,8 @@
     const ck = (b.isCollection ? b.formats : b.formats).map((f) => f.ckey).join(",");
     const isFav = b.isCollection ? b.volumes.every((v) => v.favorite) : b.favorite;
     const star = withFmt ? `<span class="fav-btn ${isFav ? "on" : ""}" data-fav="${ck}" data-on="${isFav ? 1 : 0}" title="${isFav ? "Favorilerden çıkar" : "Favorilere ekle"}" role="button"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span>` : "";
-    return `<div class="cover">${star}<div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${lang}${fmts}</div>`;
+    const stu = withFmt ? `<span class="studio-tag" title="Dedplay Studio'ya gönderildi"${(b.isCollection ? b.volumes.some(inStudio) : inStudio(b)) ? "" : " hidden"}>Stüdyo</span>` : "";
+    return `<div class="cover">${star}${stu}<div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${lang}${fmts}</div>`;
   }
   const LANG_CODES = { "Türkçe": "TR", "Osmanlıca": "OSM", "Osmanlıca / Farsça": "OSM", "Arapça": "AR", "Farsça": "FA", "English": "EN", "Nederlands": "NL", "Deutsch": "DE", "Français": "FR" };
   const langCode = (l) => LANG_CODES[l] || "XX";
@@ -256,10 +265,11 @@
   const rowHtml = (b) => b.isCollection ? `<button class="row${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, false)}
     <div style="min-width:0"><div class="ti">${esc(b.title)} <span class="badge">${volLabel(b)}</span></div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
-    <div class="badges"><span class="badge lang">${esc(b.language)}</span></div></button>` : `<button class="row${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, false)}
+    <div class="badges"><span class="badge lang">${esc(b.language)}</span>${rowStudio(b)}</div></button>` : `<button class="row${selCls(b.id)}" data-id="${b.id}"><span class="chk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span>${coverHtml(b, false)}
     <div style="min-width:0"><div class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(b.subcategory)}</div>
-    <div class="badges">${badgesHtml(b)}</div></button>`;
+    <div class="badges">${badgesHtml(b)}${rowStudio(b)}</div></button>`;
+  const rowStudio = (b) => `<span class="studio-tag inline" title="Dedplay Studio'ya gönderildi"${(b.isCollection ? b.volumes.some(inStudio) : inStudio(b)) ? "" : " hidden"}>Stüdyo</span>`;
 
   function renderSidebar() {
     const pool = baseFilter("cat");
@@ -309,6 +319,7 @@
     $("#detailBody").innerHTML = `<div class="d-wrap">${coverHtml(c, false)}<div class="d-info">
       <h2>${esc(c.title)}</h2><div class="by">${esc(c.author || "Yazar bilinmiyor")} · ${volLabel(c)}</div>
       ${(() => { const on = c.volumes.every((v) => v.favorite); return `<button class="btn sm fav-toggle ${on ? "on" : ""}" data-fav="${c.formats.map((f) => f.ckey).join(",")}" data-on="${on ? 1 : 0}"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>${on ? "Favorilerde" : "Koleksiyonu favorilere ekle"}</button>`; })()}
+      ${studioBtnHtml(c.volumes, true)}
       <dl class="d-meta"><dt>Kategori</dt><dd>${esc(c.category)} › ${esc(c.subcategory)}</dd><dt>Dil</dt><dd>${esc(c.language)}</dd>
       <dt>Klasör</dt><dd>${esc(c.language)} / ${esc(c.category)} / Koleksiyonlar / ${esc(c.title)}</dd></dl>
       <div class="vols">${vols}</div>
@@ -361,6 +372,7 @@
         <div class="org-actions"><button class="btn primary sm" type="submit">Kaydet</button><button class="btn sm" type="button" data-cancel-edit>Vazgeç</button></div>
       </form>
       <button class="btn sm fav-toggle ${b.favorite ? "on" : ""}" data-fav="${b.formats.map((f) => f.ckey).join(",")}" data-on="${b.favorite ? 1 : 0}"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>${b.favorite ? "Favorilerde" : "Favorilere ekle"}</button>
+      ${studioBtnHtml([b])}
       ${b.description ? `<p class="d-desc">${esc(b.description)}</p>` : ""}
       <dl class="d-meta">${meta}</dl>${ocrHint}<div class="d-formats">${formats}</div>
       ${editHtml(b.formats.map((f) => f.ckey), b)}
@@ -572,7 +584,7 @@
     if (!state.selecting) { $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/Seçimi kaldır$/, "Tümünü seç"); return; }
     const n = state.sel.size, files = selectedFiles();
     $("#selCount").textContent = n ? `${n.toLocaleString("tr")} seçildi · ${files.length.toLocaleString("tr")} dosya · ${fmtSize(files.reduce((t, f) => t + f.size, 0))}` : "Kitaplara dokunarak seçin";
-    $("#selDelete").disabled = !n; $("#selFav").disabled = !n;
+    $("#selDelete").disabled = !n; $("#selFav").disabled = !n; $("#selStudio").disabled = !n;
     const all = allVisibleSelected();
     $("#selAll").textContent = all ? "Seçimi kaldır" : `Tümünü seç (${state.filtered.length.toLocaleString("tr")})`;
     $("#btnSelectAll").innerHTML = $("#btnSelectAll").innerHTML.replace(/(Tümünü seç|Seçimi kaldır)$/, all ? "Seçimi kaldır" : "Tümünü seç");
@@ -742,10 +754,11 @@
   $("#dupes").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
   // ---------- silme (iki aşamalı onay, kalıcı) ----------
-  function ask({ step, title, body, ok }) {
+  function ask({ step, title, body, ok, okClass }) {
     return new Promise((resolve) => {
       const dlg = $("#confirmDlg");
       $("#cfStep").textContent = step; $("#cfTitle").textContent = title; $("#cfBody").innerHTML = body; $("#cfOk").textContent = ok;
+      $("#cfOk").className = "btn " + (okClass || "danger-solid");
       const done = (v) => { dlg.close(); $("#cfOk").onclick = $("#cfCancel").onclick = null; resolve(v); };
       $("#cfOk").onclick = () => done(true); $("#cfCancel").onclick = () => done(false);
       dlg.oncancel = (e) => { e.preventDefault(); done(false); };
@@ -786,12 +799,132 @@
     deleteFiles(b.dataset.del.split(","), b.dataset.title, b.dataset.what);
   });
 
+  // ---------- Dedplay Studio'ya gönder ----------
+  function studioBtnHtml(books, isColl) {
+    const ok = books.filter((b) => b.formats.some((f) => STUDIO_EXTS.includes(f.ext) && !f.broken));
+    if (!ok.length) return `<p class="muted small studio-line">Stüdyo yalnız EPUB, PDF, DOCX ve TXT kabul eder; bu kitabın uygun formatı yok.</p>`;
+    const done = ok.filter(inStudio).length, s = !isColl && studioOf(books[0]);
+    const ids = esc(JSON.stringify(ok.map((b) => b.formats.map((f) => f.id))));
+    const label = isColl ? (done ? `Koleksiyonu Stüdyo'ya gönder (${done}/${ok.length} gönderildi)` : `Koleksiyonu Stüdyo'ya gönder (${ok.length} cilt)`) :
+      s ? "Stüdyo'ya yeniden gönder" : "Stüdyo'ya gönder";
+    const line = s ? `<span class="muted small studio-line">✓ ${esc(s.m || "Gönderildi")}${s.t ? " · " + new Date(s.t * 1000).toLocaleString("tr") : ""}</span>` : "";
+    return `<div class="studio-row"><button class="btn sm studio-btn" data-studio="${ids}" data-n="${ok.length}" data-done="${done}" data-title="${esc(isColl ? books[0].series || "" : books[0].title)}"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg>${label}</button>${line}</div>`;
+  }
+  // liste öğeleri (kitap / koleksiyon) -> kitap listesi
+  const booksOfItems = (items) => items.flatMap((x) => (x.isCollection ? x.volumes : [x]));
+  async function sendToStudio(books, title) {
+    const ok = books.filter((b) => b.formats.some((f) => STUDIO_EXTS.includes(f.ext) && !f.broken));
+    const unsupported = books.length - ok.length, done = ok.filter(inStudio).length, fresh = ok.length - done;
+    if (!ok.length) { toast("Seçilenlerde Stüdyo'nun kabul ettiği format (EPUB, PDF, DOCX, TXT) yok"); return false; }
+    let force = false;
+    if (ok.length === 1 && !done) {
+      // tek kitap: onay sormadan gönder
+    } else {
+      const go = await ask({ step: "Dedplay Studio", title: `“${title}” Stüdyo'ya gönderilsin mi?`,
+        body: `<b>${ok.length.toLocaleString("tr")}</b> kitap` + (fresh ? ` · <b>${fresh.toLocaleString("tr")}</b> yeni` : "") +
+          (done ? ` · ${done.toLocaleString("tr")} tanesi daha önce gönderilmiş` : "") +
+          (unsupported ? `<br><span class="muted">${unsupported} kitap atlanacak (MOBI, DJVU gibi Stüdyo'nun kabul etmediği format ya da bozuk dosya).</span>` : "") +
+          `<p class="muted small" style="margin-top:10px">Her kitaptan en iyi tek dosya gider (EPUB › metin PDF › taranmış PDF). Studio'da zaten olan kitaplar atlanır. Gönderim arka planda sırayla yapılır; sayfayı kapatabilirsiniz.</p>` +
+          (done ? `<label class="switch" style="margin-top:8px"><input type="checkbox" id="cfForce">Daha önce gönderilenleri de yeniden gönder (Studio'da baştan işlenir)</label>` : ""),
+        ok: fresh ? `${fresh.toLocaleString("tr")} kitabı gönder` : "Gönder", okClass: "primary" });
+      if (!go) return false;
+      force = !!$("#cfForce")?.checked;
+      if (!fresh && !force) { toast("Hepsi zaten gönderilmiş"); return false; }
+    }
+    try {
+      const d = await post("/api/studio/send", { books: ok.map((b) => b.formats.map((f) => f.id)), force: force || (ok.length === 1 && !!done) });
+      applyStudio(d);
+      const extra = [d.already ? `${d.already} zaten gönderilmişti` : "", d.unsupported ? `${d.unsupported} desteklenmiyor` : ""].filter(Boolean).join(" · ");
+      toast(d.queued ? `${d.queued.toLocaleString("tr")} kitap Stüdyo sırasına alındı` + (extra ? ` (${extra})` : "") : "Gönderilecek yeni kitap yok" + (extra ? ` (${extra})` : ""));
+      return true;
+    } catch (e) { toast("Gönderilemedi: " + e.message); return false; }
+  }
+  let studioTimer = null, studioWasRunning = false;
+  async function loadStudio() {
+    try { applyStudio(await (await fetch("/api/studio", { cache: "no-store" })).json()); } catch {}
+  }
+  function applyStudio(d) {
+    const before = Object.keys(state.studio.sent).length;
+    state.studio = { sent: d.sent || {}, status: d.status || {}, url: d.url };
+    markStudio();
+    const st = state.studio.status, bar = $("#studioBar");
+    if (st.running) {
+      bar.hidden = false; studioWasRunning = true;
+      $("#studioText").innerHTML = `Stüdyo'ya gönderiliyor: <b>${st.done.toLocaleString("tr")} / ${st.total.toLocaleString("tr")}</b>` +
+        (st.current ? ` <span class="muted" title="${esc(st.current)}">· ${esc(st.current)}</span>` : "");
+      $("#studioProg").style.width = (st.total ? (100 * st.done) / st.total : 3) + "%";
+      $("#studioStop").hidden = false; $("#studioClose").hidden = true;
+      if (!studioTimer) studioTimer = setInterval(loadStudio, 2500);
+    } else {
+      clearInterval(studioTimer); studioTimer = null;
+      if (studioWasRunning) {
+        studioWasRunning = false;
+        $("#studioText").innerHTML = st.error ? `<span style="color:var(--warn)">${esc(st.error)}</span>` :
+          `Stüdyo'ya gönderim bitti: <b>${(st.sent || 0).toLocaleString("tr")}</b> gönderildi` +
+          (st.skipped ? ` · ${st.skipped} Studio'da zaten vardı` : "") + (st.failed ? ` · <span style="color:var(--warn)">${st.failed} hata</span>` : "");
+        $("#studioProg").style.width = "100%";
+        $("#studioStop").hidden = true; $("#studioClose").hidden = false;
+        if (state.states.has("studio_yes") || state.states.has("studio_no")) render(); else renderSidebar();
+        if ($("#detail").open && location.hash.includes("kitap=")) openDetail(location.hash.split("kitap=")[1]);
+      } else if (bar.hidden === false && $("#studioClose").hidden) bar.hidden = true;
+    }
+    if (Object.keys(state.studio.sent).length !== before && !st.running) renderSidebar();
+  }
+  // görünen kartlardaki "Stüdyo" etiketi (listeyi baştan çizmeden)
+  function markStudio() {
+    const map = {};
+    for (const x of state.filtered) map[x.id] = x;
+    document.querySelectorAll("#books [data-id]").forEach((el) => {
+      const x = map[el.dataset.id], tag = el.querySelector(".studio-tag"); if (!x || !tag) return;
+      tag.hidden = !(x.isCollection ? x.volumes.some(inStudio) : inStudio(x));
+    });
+  }
+  $("#btnStudio").addEventListener("click", () => {
+    if (state.selecting && state.sel.size) return $("#selStudio").click();
+    const books = booksOfItems(state.filtered);
+    if (!books.length) return toast("Listede kitap yok");
+    sendToStudio(books, $("#resultTitle").textContent);
+  });
+  $("#selStudio").addEventListener("click", async () => {
+    const items = state.filtered.filter((x) => state.sel.has(x.id));
+    const books = booksOfItems(items);
+    if (!books.length) return;
+    if (await sendToStudio(books, `${state.sel.size} seçili kitap`)) setSelecting(false);
+  });
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-studio]"); if (!b) return;
+    e.preventDefault();
+    const groups = JSON.parse(b.dataset.studio);
+    const ids = new Set(groups.flat());
+    const books = state.books.filter((x) => x.formats.some((f) => ids.has(f.id)));
+    if (await sendToStudio(books, b.dataset.title)) {
+      b.disabled = true; b.lastChild.textContent = "Sıraya alındı";
+    }
+  });
+  $("#studioStop").addEventListener("click", async () => {
+    const d = await post("/api/studio/cancel", {}).catch(() => null);
+    if (d) { toast(`${d.cancelled} kitap sıradan çıkarıldı (gönderilmekte olan tamamlanır)`); applyStudio(d); }
+  });
+  $("#studioClose").addEventListener("click", () => { $("#studioBar").hidden = true; });
+  function stuStatus(msg, kind) { const el = $("#stuStatus"); el.hidden = !msg; el.className = "org-card " + (kind || ""); el.innerHTML = msg || ""; }
+  async function stuCheck(body) {
+    stuStatus("Studio aranıyor…");
+    try {
+      const d = await post("/api/studio/settings", body || {});
+      stuStatus((d.ok ? "✓ " : "") + esc(d.message), d.ok ? (d.shared === false ? "warn" : "ok") : "warn");
+      $("#stuUrl").value = d.saved_url || "";
+    } catch (e) { stuStatus("Olmadı: " + esc(e.message), "warn"); }
+  }
+  $("#stuSave").addEventListener("click", () => stuCheck({ url: $("#stuUrl").value }));
+  $("#stuTest").addEventListener("click", () => stuCheck());
+
   // ---------- ayarlar ----------
   function setStatus(msg, kind) {
     const el = $("#setStatus"); el.hidden = !msg; el.className = "org-card " + (kind || ""); el.innerHTML = msg || "";
   }
   async function openSettings() {
-    $("#settings").showModal(); setStatus("");
+    $("#settings").showModal(); setStatus(""); stuStatus("");
+    $("#stuUrl").value = state.studio.url || "";
     try {
       const d = await (await fetch("/api/settings", { cache: "no-store" })).json();
       const ai = d.ai, st = d.ai_status;
