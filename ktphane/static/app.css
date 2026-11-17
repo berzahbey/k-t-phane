@@ -454,3 +454,5 @@ body.playing .selbar, body.playing .studio-bar, body.playing .toast { bottom: ca
 .redo-box { margin: 14px 0; }
 .redo-box .org-actions { margin-top: 10px; }
 #activeChips .btn.sm { height: 30px; }
+.dup-line { display: flex; margin-top: -2px; }
+.badge.text { background: var(--accent-soft); color: var(--accent); }

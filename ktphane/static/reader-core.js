@@ -29,10 +29,13 @@
   const DEFAULTS = {
     theme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
     size: RTL ? 125 : 105, font: RTL ? "Amiri" : "Literata", line: RTL ? 1.9 : 1.55, margin: 1, align: "justify",
-    flow: "paginated", spread: "auto", pdfFilter: "none", pdfMode: "page", dir: RTL ? "rtl" : "ltr",
+    flow: "scrolled", spread: "auto", pdfFilter: "none", pdfMode: "page", dir: RTL ? "rtl" : "ltr",
   };
   const settingsKey = (INFO.ext === "pdf" ? "pdf" : "epub") + (RTL ? ".rtl" : "");
-  const S = Object.assign({}, DEFAULTS, store.get("settings." + settingsKey, {}), store.get("book." + INFO.ckey + ".dir", null) ? { dir: store.get("book." + INFO.ckey + ".dir") } : {});
+  // 2.15: varsayılan akış "kaydırarak" (tek sütun, aşağı doğru); eski kayıtlı ayarlar bir kez buna geçer
+  const _saved = store.get("settings." + settingsKey, {});
+  if (_saved && !_saved.v215) { delete _saved.flow; _saved.v215 = 1; store.set("settings." + settingsKey, _saved); }
+  const S = Object.assign({}, DEFAULTS, _saved, store.get("book." + INFO.ckey + ".dir", null) ? { dir: store.get("book." + INFO.ckey + ".dir") } : {});
   const THEMES = [
     ["light", "#faf7f0", "#24221d", "Açık"], ["sepia", "#f4ecd8", "#3b3124", "Sepya"], ["green", "#e3eddc", "#22301f", "Yeşil"],
     ["gray", "#4a4c4f", "#e7e5e0", "Gri"], ["dark", "#1b1b1a", "#d9d6cf", "Koyu"], ["black", "#000000", "#c8c5be", "Siyah"],

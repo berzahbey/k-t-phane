@@ -433,17 +433,18 @@
     const fab = b.audio.length && !big ? `<span class="play-fab" role="button" tabindex="0" data-play="${b.id}" title="Dinle${l && !l.finished && l.time ? " — kaldığın yerden" : ""}">${PLAY_SVG}</span>` : "";
     return `<div class="cover">${fab}${big ? "" : ""}<div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${eds}${pct ? `<span class="listen-bar"><i style="width:${pct}%"></i></span>` : ""}</div>`;
   }
-  const shelfCard = (b) => `<div class="card shelf-card" role="button" tabindex="0" data-sid="${b.id}">${shelfCover(b)}<span class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span>${catLine(b) ? `<span class="au cat-line">${esc(catLine(b))}</span>` : ""}</div>`;
+  const dupBadge = (b) => b.dup_count > 1 ? (b.dup_of ? `<span class="badge broken" title="Bu kitabın daha yeni işlenmiş kopyası var">Eski kopya</span>` : `<span class="badge text" title="Çift kayıtların en yenisi">En yeni</span>`) : "";
+  const shelfCard = (b) => `<div class="card shelf-card" role="button" tabindex="0" data-sid="${b.id}">${shelfCover(b)}${b.dup_count > 1 ? `<span class="dup-line">${dupBadge(b)}</span>` : ""}<span class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span>${catLine(b) ? `<span class="au cat-line">${esc(catLine(b))}</span>` : ""}</div>`;
   const shelfRow = (b) => `<div class="row shelf-row" role="button" tabindex="0" data-sid="${b.id}">${b.audio.length ? `<span class="play-fab inline" role="button" tabindex="0" data-play="${b.id}" title="Dinle">${PLAY_SVG}</span>` : `<span></span>`}
     <div style="min-width:0"><div class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</div><div class="sub au-m">${esc(b.author)}</div></div>
     <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(catLine(b) || "Stüdyo")}</div>
-    <div class="badges">${b.versions.map((v) => `<span class="badge lang">${esc(v.short)}</span>`).join("")}${b.audio.length ? `<span class="badge">Sesli</span>` : ""}</div></div>`;
+    <div class="badges">${dupBadge(b)}${b.versions.map((v) => `<span class="badge lang">${esc(v.short)}</span>`).join("")}${b.audio.length ? `<span class="badge">Sesli</span>` : ""}</div></div>`;
 
   function shelfFiltered() {
     const terms = fold(state.q).split(/\s+/).filter(Boolean);
     let list = state.shelf.books.filter((b) => (!terms.length || terms.every((t) => b._s.includes(t))) &&
       (!state.shelfCat || (state.shelfCat === "Stüdyo" ? !catLine(b) : b.category === state.shelfCat)) &&
-      (!state.shelfOld || !b.versions.length));
+      (!state.shelfOld || !b.versions.length) && (!state.shelfDup || b.dup_count > 1));
     const s = state.sort;
     if (s === "author") list.sort((a, b) => cmp(a.author || "￿", b.author || "￿") || cmp(a.title, b.title));
     else if (s === "added") list.sort((a, b) => b.added - a.added);
@@ -462,7 +463,10 @@
     const ck = Object.keys(cats).sort((a, b) => (a === "Stüdyo") - (b === "Stüdyo") || cmp(a, b));
     const oldN = sh.books.filter((b) => !b.versions.length).length;
     const oldList = state.shelfOld ? shelfFiltered() : [];
-    $("#activeChips").innerHTML = (oldN ? `<button class="chip warn-chip ${state.shelfOld ? "on" : ""}" data-shelfold="1" title="Okunacak dosyası olmayan (eski) kitaplar">Dosyası yok<span class="n">${oldN}</span></button>` : "") +
+    const dupOld = sh.books.filter((b) => b.dup_of);
+    const dupHtml = (dupOld.length ? `<button class="chip warn-chip ${state.shelfDup ? "on" : ""}" data-shelfdup="1" title="Aynı kitap birden fazla kez işlenmiş">Çift kayıtlar<span class="n">${dupOld.length}</span></button>` : "") +
+      (state.shelfDup && dupOld.length ? `<button class="btn sm danger-solid" data-dupdel="${dupOld.map((b) => b.id).join(",")}">Eskilerini sil, en yenisi kalsın (${dupOld.length})</button>` : "");
+    $("#activeChips").innerHTML = dupHtml + (oldN ? `<button class="chip warn-chip ${state.shelfOld ? "on" : ""}" data-shelfold="1" title="Okunacak dosyası olmayan (eski) kitaplar">Dosyası yok<span class="n">${oldN}</span></button>` : "") +
       (state.shelfOld && oldList.length ? `<button class="btn sm danger-solid" data-redo="${oldList.map((b) => b.id).join(",")}">Bunları sil ve yeniden işle (${oldList.length})</button>` : "") +
       (ck.length > 1 ? ck.map((k) => `<button class="chip ${state.shelfCat === k ? "on" : ""}" data-shelfcat="${esc(k)}">${esc(k === "Stüdyo" ? "Kategorisiz" : k)}<span class="n">${cats[k]}</span></button>`).join("") : "");
     const list = shelfFiltered();
@@ -492,7 +496,10 @@
     });
   }
   document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-shelfold]")) { state.shelfOld = !state.shelfOld; render(); return; }
+    if (e.target.closest("[data-shelfold]")) { state.shelfOld = !state.shelfOld; state.shelfDup = false; render(); return; }
+    if (e.target.closest("[data-shelfdup]")) { state.shelfDup = !state.shelfDup; state.shelfOld = false; render(); return; }
+    const dd = e.target.closest("[data-dupdel]");
+    if (dd) { e.preventDefault(); removeShelf(dd.dataset.dupdel.split(",")); return; }
     const r = e.target.closest("[data-redo]");
     if (r) { e.preventDefault(); redoShelf(r.dataset.redo.split(",")); return; }
     const c = e.target.closest("[data-shelfcat]"); if (!c) return;
@@ -534,6 +541,8 @@
       ...b.audio.map((a, i) => `<a class="btn sm" href="/download/${a.id}">↓ ${b.audio.length > 1 ? `Ses ${i + 1}` : "Ses"} · ${fmtSize(a.size)}</a>`)].join("");
     $("#detailBody").innerHTML = `<div class="d-wrap">${shelfCover(b, true)}<div class="d-info">
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
+      ${b.dup_of ? `<div class="org-card warn redo-box">Bu kitap daha sonra yeniden işlenmiş; bu <b>eski kopya</b> (${new Date(b.added * 1000).toLocaleDateString("tr")}).
+        <div class="org-actions"><button class="btn sm danger-solid" data-dupdel="${b.id}">Bu eski kopyayı sil</button><button class="btn sm" data-sid-open="${b.dup_of}">En yenisini aç</button></div></div>` : ""}
       ${playBtn}
       ${b.versions.length ? `<h3 class="d-h">Oku</h3><div class="ed-grid">${eds}</div>` : `<div class="org-card warn redo-box">Bu kitabın okunacak dosyası yok (eski bir işlemden kalmış, yalnız ses var).
         ${b.source_id ? `<div class="org-actions"><button class="btn sm danger-solid" data-redo="${b.id}">Sil ve Stüdyo'da yeniden işle</button></div>` : `<br><small>Kitaplık'taki aslı bulunamadığı için yeniden gönderilemiyor.</small>`}</div>`}
@@ -569,6 +578,26 @@
       $("#detail").open && $("#detail").close();
       toast(`${d.removed_books} kitabın dosyaları silindi · ${d.queued} kitap Studio'ya gönderiliyor` + (d.errors.length ? ` · ${d.errors.length} dosya silinemedi` : ""));
       state.shelfOld = false;
+      await loadShelf();
+    } catch (e) { toast("Olmadı: " + e.message); }
+  }
+
+  document.addEventListener("click", (e) => { const o = e.target.closest("[data-sid-open]"); if (o) { e.preventDefault(); openShelf(o.dataset.sidOpen); } });
+  async function removeShelf(ids) {
+    const books = state.shelf.books.filter((b) => ids.includes(b.id));
+    if (!books.length) return;
+    const byId = Object.fromEntries(state.shelf.books.map((b) => [b.id, b]));
+    const d8 = (t) => new Date(t * 1000).toLocaleString("tr", { dateStyle: "short", timeStyle: "short" });
+    const list = `<ul class="cf-list">${books.slice(0, 15).map((b) => `<li>${esc(b.title)} <span>· silinecek: ${d8(b.added)}${byId[b.dup_of] ? ` · kalacak: ${d8(byId[b.dup_of].added)}` : ""}</span></li>`).join("")}${books.length > 15 ? `<li>… ve ${books.length - 15} kitap daha</li>` : ""}</ul>`;
+    const one = books.length === 1 ? `“${books[0].title}” eski kopyası` : `${books.length} eski kopya`;
+    if (!await ask({ step: "1 / 2", title: `${one} silinsin mi?`, body: `Her kitabın <b>en son işlenen</b> kopyası kalır; eskilerin bütün dosyaları (ses, MP3, metinler, çalışma klasörü) silinir.${list}`, ok: "Devam" })) return;
+    if (!await ask({ step: "2 / 2", title: "Emin misiniz? Bu işlem geri alınamaz.", body: `${one} sunucudan <b>kalıcı olarak</b> silinecek.`, ok: "Evet, kalıcı olarak sil" })) return;
+    try {
+      const d = await post("/api/shelf/remove", { ids: books.map((b) => b.id), confirm: "KALICI-SIL" });
+      if (P.book && ids.includes(P.book.id)) $("#plClose").click();
+      $("#detail").open && $("#detail").close();
+      toast(`${d.removed_books} eski kopya silindi` + (d.errors.length ? ` · ${d.errors.length} dosya silinemedi` : ""));
+      state.shelfDup = false;
       await loadShelf();
     } catch (e) { toast("Olmadı: " + e.message); }
   }

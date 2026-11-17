@@ -347,6 +347,25 @@ def create_app():
         return jsonify(removed_books=len(books), removed=removed, errors=errors[:20], queued=res.get("queued", 0),
                        unsupported=res.get("unsupported", 0), no_source=no_source[:50], **lib.studio.public())
 
+    @app.post("/api/shelf/remove")
+    def shelf_remove():
+        """Stüdyo rafından kitap(lar)ın bütün dosyalarını kalıcı siler (çift kayıtların eskileri için)."""
+        from .trash import CONFIRM_TOKEN
+        d = request.get_json(silent=True) or {}
+        if d.get("confirm") != CONFIRM_TOKEN:
+            return jsonify(error="Silme onayı eksik"), 400
+        sh = lib.shelf
+        if not sh.writable():
+            return jsonify(error="Stüdyo klasörü salt okunur bağlı. ZimaOS'ta Kitaplık ayarlarında /studyo satırını yazılabilir yapın."), 409
+        ids = set(i for i in d.get("ids") or [] if isinstance(i, str))
+        books = [b for b in sh.books() if b["id"] in ids]
+        removed, errors = 0, []
+        for b in books:
+            n, _, err = sh.remove_book(b)
+            removed += n
+            errors += err
+        return jsonify(removed_books=len(books), removed=removed, errors=errors[:20])
+
     def _shelf_rec(fid):
         rec = lib.shelf.get_file(fid)
         if not rec or not os.path.isfile(rec["path"]):

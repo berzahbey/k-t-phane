@@ -262,6 +262,21 @@ class Shelf:
             out.append({**b, "category": m.get("category") or "Stüdyo", "subcategory": m.get("subcategory") or "",
                         "language": m.get("language") or "", "source_id": m.get("book_id"),
                         "source_title": m.get("title"), "matched_by": m.get("by")})
+        # Çift kayıtlar: aynı kitap iki kez işlenmiş (aynı Kitaplık aslı ya da birebir aynı başlık + yazar).
+        # Adlarındaki rakamlar farklıysa (Cilt 1 / Cilt 2) çift sayılmaz. En son işlenen kalır.
+        groups = {}
+        for b in out:
+            digits = " ".join(sorted(w for w in key_of(b["name"]).split() if w.isdigit()))
+            k = (b["source_id"] or key_of(f"{b['title']} {b['author']}"), digits)
+            groups.setdefault(k, []).append(b)
+        for g in groups.values():
+            if len(g) < 2:
+                continue
+            g.sort(key=lambda b: (bool(b["versions"]), bool(b["audio"]), b["added"]), reverse=True)
+            gid = g[0]["id"]
+            for i, b in enumerate(g):
+                b["dup_of"] = None if i == 0 else gid
+                b["dup_count"] = len(g)
         out.sort(key=lambda b: b["title"].casefold())
         return out
 

@@ -57,13 +57,22 @@
     }
     return best ? best.label : "";
   }
-  function percentOf(cfi, href) {
+  function percentOf(cfi, href, loc) {
     if (book.locations.length()) return book.locations.percentageFromCfi(cfi);
-    const sec = book.spine.get(href); return sec ? sec.index / Math.max(1, book.spine.length) : 0;
+    // konumlar henüz hesaplanmadı: bölüm sırası + bölüm içindeki yer (büyük kitapta %0'da beklemesin)
+    const sec = book.spine.get(href); if (!sec) return 0;
+    let inner = 0;
+    const d = loc && loc.start && loc.start.displayed;
+    if (d && d.total > 1) inner = (d.page - 1) / d.total;
+    else if (S.flow === "scrolled") {
+      try { const c = rendition.manager?.container, v = rendition.manager?.views?.find?.((x) => x.section?.href === sec.href);
+        if (c && v) inner = Math.max(0, Math.min(1, (c.scrollTop - v.element.offsetTop) / Math.max(1, v.element.offsetHeight))); } catch {}
+    }
+    return (sec.index + inner) / Math.max(1, book.spine.length);
   }
   function onRelocated(loc) {
     curLoc = loc;
-    const cfi = loc.start.cfi, href = loc.start.href, pct = percentOf(cfi, href), chap = chapterOf(href);
+    const cfi = loc.start.cfi, href = loc.start.href, pct = percentOf(cfi, href, loc), chap = chapterOf(href);
     $("#chap").textContent = chap; $("#miniTop").textContent = chap;
     $("#slider").value = Math.round(pct * 1000);
     $("#miniBot").textContent = Math.round(pct * 100) + "%";
@@ -297,7 +306,9 @@
     const cached = R.store.get(lkey, null);
     if (cached) { try { book.locations.load(cached); } catch {} }
     if (!book.locations.length()) {
-      await book.locations.generate(1600).catch(() => {});
+      // sayfa görünsün, sonra arka planda (büyük kitapta Safari'yi kilitlemesin diye bekleyerek)
+      await new Promise((r) => setTimeout(r, 2500));
+      await book.locations.generate(2200).catch(() => {});
       try { R.store.set(lkey, book.locations.save()); } catch {}
     }
     if (curLoc) onRelocated(curLoc);
