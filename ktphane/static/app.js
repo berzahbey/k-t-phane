@@ -442,7 +442,8 @@
   function shelfFiltered() {
     const terms = fold(state.q).split(/\s+/).filter(Boolean);
     let list = state.shelf.books.filter((b) => (!terms.length || terms.every((t) => b._s.includes(t))) &&
-      (!state.shelfCat || (state.shelfCat === "Stüdyo" ? !catLine(b) : b.category === state.shelfCat)));
+      (!state.shelfCat || (state.shelfCat === "Stüdyo" ? !catLine(b) : b.category === state.shelfCat)) &&
+      (!state.shelfOld || !b.versions.length));
     const s = state.sort;
     if (s === "author") list.sort((a, b) => cmp(a.author || "￿", b.author || "￿") || cmp(a.title, b.title));
     else if (s === "added") list.sort((a, b) => b.added - a.added);
@@ -459,7 +460,11 @@
     $("#continue").hidden = true;
     const cats = countBy(sh.books, (b) => b.category && catLine(b) ? b.category : "Stüdyo");
     const ck = Object.keys(cats).sort((a, b) => (a === "Stüdyo") - (b === "Stüdyo") || cmp(a, b));
-    $("#activeChips").innerHTML = ck.length > 1 ? ck.map((k) => `<button class="chip ${state.shelfCat === k ? "on" : ""}" data-shelfcat="${esc(k)}">${esc(k === "Stüdyo" ? "Kategorisiz" : k)}<span class="n">${cats[k]}</span></button>`).join("") : "";
+    const oldN = sh.books.filter((b) => !b.versions.length).length;
+    const oldList = state.shelfOld ? shelfFiltered() : [];
+    $("#activeChips").innerHTML = (oldN ? `<button class="chip warn-chip ${state.shelfOld ? "on" : ""}" data-shelfold="1" title="Okunacak dosyası olmayan (eski) kitaplar">Dosyası yok<span class="n">${oldN}</span></button>` : "") +
+      (state.shelfOld && oldList.length ? `<button class="btn sm danger-solid" data-redo="${oldList.map((b) => b.id).join(",")}">Bunları sil ve yeniden işle (${oldList.length})</button>` : "") +
+      (ck.length > 1 ? ck.map((k) => `<button class="chip ${state.shelfCat === k ? "on" : ""}" data-shelfcat="${esc(k)}">${esc(k === "Stüdyo" ? "Kategorisiz" : k)}<span class="n">${cats[k]}</span></button>`).join("") : "");
     const list = shelfFiltered();
     const audioN = sh.books.filter((b) => b.audio.length).length;
     $("#resultCount").textContent = `${list.length.toLocaleString("tr")} kitap` + (list.length !== sh.books.length ? ` · toplam ${sh.books.length}` : "") + (audioN ? ` · ${audioN} sesli kitap` : "");
@@ -487,6 +492,9 @@
     });
   }
   document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-shelfold]")) { state.shelfOld = !state.shelfOld; render(); return; }
+    const r = e.target.closest("[data-redo]");
+    if (r) { e.preventDefault(); redoShelf(r.dataset.redo.split(",")); return; }
     const c = e.target.closest("[data-shelfcat]"); if (!c) return;
     state.shelfCat = state.shelfCat === c.dataset.shelfcat ? null : c.dataset.shelfcat; render();
   });
@@ -527,7 +535,8 @@
     $("#detailBody").innerHTML = `<div class="d-wrap">${shelfCover(b, true)}<div class="d-info">
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
       ${playBtn}
-      ${b.versions.length ? `<h3 class="d-h">Oku</h3><div class="ed-grid">${eds}</div>` : ""}
+      ${b.versions.length ? `<h3 class="d-h">Oku</h3><div class="ed-grid">${eds}</div>` : `<div class="org-card warn redo-box">Bu kitabın okunacak dosyası yok (eski bir işlemden kalmış, yalnız ses var).
+        ${b.source_id ? `<div class="org-actions"><button class="btn sm danger-solid" data-redo="${b.id}">Sil ve Stüdyo'da yeniden işle</button></div>` : `<br><small>Kitaplık'taki aslı bulunamadığı için yeniden gönderilemiyor.</small>`}</div>`}
       <dl class="d-meta">${meta}</dl>
       <details class="dl-box"><summary>İndir</summary><div class="dl-row">${dl}</div></details></div></div>`;
     hydrateImgs($("#detailBody"));
@@ -539,6 +548,30 @@
     const o = e.target.closest("[data-open-book]"); if (!o) return;
     state.studyoView = false; render(); openDetail(o.dataset.openBook);
   });
+
+  async function redoShelf(ids) {
+    const books = state.shelf.books.filter((b) => ids.includes(b.id));
+    if (!books.length) return;
+    const noSrc = books.filter((b) => !b.source_id);
+    const list = `<ul class="cf-list">${books.slice(0, 12).map((b) => `<li>${esc(b.title)}${b.author ? " · " + esc(b.author) : ""}${b.source_id ? "" : ` <span style="color:var(--warn)">(aslı bulunamadı: yalnız silinir)</span>`}</li>`).join("")}${books.length > 12 ? `<li>… ve ${books.length - 12} kitap daha</li>` : ""}</ul>`;
+    const one = books.length === 1 ? `“${books[0].title}”` : `${books.length} kitap`;
+    const ok1 = await ask({ step: "1 / 2", title: `${one} silinip yeniden işlensin mi?`,
+      body: `Studio çıktı klasöründeki bütün dosyaları (sesli kitap, MP3 parçaları, PDF/HTML/TXT/DOCX/EPUB ve seslendirmenin çalışma klasörü) silinecek, sonra Kitaplık'taki asılları Dedplay Studio'ya gönderilip <b>baştan işlenecek</b>.${list}` +
+        (noSrc.length ? `<p class="small" style="color:var(--warn)">${noSrc.length} kitabın Kitaplık'ta aslı bulunamadı; onlar yalnız silinir.</p>` : ""), ok: "Devam" });
+    if (!ok1) return;
+    const ok2 = await ask({ step: "2 / 2", title: "Emin misiniz? Silinen dosyalar geri getirilemez.",
+      body: `${one} için dosyalar sunucudan <b>kalıcı olarak</b> silinecek. Yeni ses ve metinler Studio işledikçe rafa gelir (kitap başına birkaç saat sürebilir).`, ok: "Evet, sil ve yeniden işle" });
+    if (!ok2) return;
+    try {
+      const d = await post("/api/shelf/redo", { ids: books.map((b) => b.id), confirm: "KALICI-SIL" });
+      applyStudio(d);
+      if (P.book && ids.includes(P.book.id)) $("#plClose").click();
+      $("#detail").open && $("#detail").close();
+      toast(`${d.removed_books} kitabın dosyaları silindi · ${d.queued} kitap Studio'ya gönderiliyor` + (d.errors.length ? ` · ${d.errors.length} dosya silinemedi` : ""));
+      state.shelfOld = false;
+      await loadShelf();
+    } catch (e) { toast("Olmadı: " + e.message); }
+  }
 
   // ---------- oynatıcı ----------
   const P = { audio: new Audio(), book: null, part: 0, lastSave: 0, pendingSeek: null };

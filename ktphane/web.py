@@ -316,6 +316,37 @@ def create_app():
             abort(404)
         return jsonify(lib.shelf.set_listen(bid, request.get_json(silent=True, force=True) or {}))
 
+    @app.post("/api/shelf/redo")
+    def shelf_redo():
+        """Eski (metin dosyası olmayan) Stüdyo kitapları: dosyaları kalıcı silinir, Kitaplık'taki aslı Studio'ya
+        yeniden gönderilir (baştan işlenir). İki aşamalı onaydan sonra confirm="KALICI-SIL" ile çağrılır."""
+        from .trash import CONFIRM_TOKEN
+        d = request.get_json(silent=True) or {}
+        if d.get("confirm") != CONFIRM_TOKEN:
+            return jsonify(error="Silme onayı eksik"), 400
+        sh = lib.shelf
+        if not sh.writable():
+            return jsonify(error="Stüdyo klasörü salt okunur bağlı. ZimaOS'ta Kitaplık ayarlarında /studyo satırını "
+                                 "yazılabilir yapın (\":ro\" ya da \"Salt okunur\" işaretini kaldırın)."), 409
+        ids = set(i for i in d.get("ids") or [] if isinstance(i, str))
+        books = [b for b in sh.books() if b["id"] in ids]
+        if not books:
+            return jsonify(error="Kitap seçilmedi"), 400
+        by_id = {b["id"]: b for b in lib.books()}
+        removed, groups, no_source, errors = 0, [], [], []
+        for b in books:
+            src = by_id.get(b.get("source_id"))
+            n, _, err = sh.remove_book(b)
+            removed += n
+            errors += err
+            if src:
+                groups.append([f["id"] for f in src["formats"]])
+            else:
+                no_source.append(b["title"])
+        res = lib.studio.enqueue(groups, force=True) if groups else {"queued": 0}
+        return jsonify(removed_books=len(books), removed=removed, errors=errors[:20], queued=res.get("queued", 0),
+                       unsupported=res.get("unsupported", 0), no_source=no_source[:50], **lib.studio.public())
+
     def _shelf_rec(fid):
         rec = lib.shelf.get_file(fid)
         if not rec or not os.path.isfile(rec["path"]):

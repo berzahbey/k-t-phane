@@ -449,3 +449,8 @@ body.playing .selbar, body.playing .studio-bar, body.playing .toast { bottom: ca
   body.playing .main { padding-bottom: 170px; }
   body.playing .selbar, body.playing .studio-bar, body.playing .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
+.chip.warn-chip { border-color: var(--warn); color: var(--warn); }
+.chip.warn-chip.on { background: var(--warn); color: #fff; }
+.redo-box { margin: 14px 0; }
+.redo-box .org-actions { margin-top: 10px; }
+#activeChips .btn.sm { height: 30px; }

@@ -286,6 +286,87 @@ class Shelf:
         with self._lock:
             self._cache = (0.0, self._cache[1])
 
+    # ---------- sil ve yeniden işle ----------
+    ALL_TEXT_DIRS = ("EPUB", "PDF", "DOCX", "TXT", "HTML")
+
+    def writable(self):
+        if not self.available():
+            return False
+        probe = os.path.join(self.root, f".kitaplik-yazma-{os.getpid()}")
+        try:
+            with open(probe, "w"):
+                pass
+            os.remove(probe)
+            return True
+        except OSError:
+            return False
+
+    def files_of(self, book):
+        """Kitabın Studio çıktı klasöründeki bütün dosyaları: metin biçimleri (3 dil), M4B, MP3/<ad>/ ve seslendirmenin
+        çalışma klasörü .seslendirme/<ad>/. Yalnız adı bu kitabın adıyla (ya da birleşen adlarıyla) birebir eşleşenler."""
+        keys = {book["key"], *(book.get("aliases") or [])}
+        root = os.path.realpath(self.root)
+        files, dirs = [], []
+
+        def inside(p):
+            return os.path.realpath(p).startswith(root + os.sep)
+
+        for sub in self.ALL_TEXT_DIRS:
+            d = os.path.join(self.root, sub)
+            if not os.path.isdir(d):
+                continue
+            for lang in os.listdir(d):
+                ld = os.path.join(d, lang)
+                if lang.startswith(".") or not os.path.isdir(ld):
+                    continue
+                for f in os.listdir(ld):
+                    if not f.startswith(".") and key_of(os.path.splitext(f)[0]) in keys:
+                        files.append(os.path.join(ld, f))
+        md = os.path.join(self.root, M4B_DIR)
+        if os.path.isdir(md):
+            for f in os.listdir(md):
+                if f.lower().endswith(".m4b") and key_of(re.sub(r" - \d+$", "", f[:-4])) in keys:
+                    files.append(os.path.join(md, f))
+        for sub in (MP3_DIR, ".seslendirme"):
+            d = os.path.join(self.root, sub)
+            if os.path.isdir(d):
+                for f in os.listdir(d):
+                    p = os.path.join(d, f)
+                    if os.path.isdir(p) and not os.path.islink(p) and key_of(f) in keys:
+                        dirs.append(p)
+        return [p for p in files if inside(p)], [p for p in dirs if inside(p)]
+
+    def remove_book(self, book):
+        """Dosyaları kalıcı siler. Döner: (silinen yol sayısı, boşalan bayt, hatalar)."""
+        import shutil
+        files, dirs = self.files_of(book)
+        n, size, errors = 0, 0, []
+        for p in files:
+            try:
+                size += os.path.getsize(p)
+                os.remove(p)
+                n += 1
+            except OSError as e:
+                errors.append(f"{os.path.relpath(p, self.root)}: {e.strerror or e}")
+        for d in dirs:
+            try:
+                for r, _, fs in os.walk(d):
+                    size += sum(os.path.getsize(os.path.join(r, f)) for f in fs if os.path.isfile(os.path.join(r, f)))
+                shutil.rmtree(d)
+                n += 1
+            except OSError as e:
+                errors.append(f"{os.path.relpath(d, self.root)}: {e.strerror or e}")
+        log_file = os.path.join(self.lib.data_dir, "studyo-silinenler.json")
+        rec = self.lib._read_json(log_file, [])
+        rec.append({"t": int(time.time()), "title": book["title"], "author": book["author"],
+                    "paths": [os.path.relpath(p, self.root) for p in files + dirs], "errors": errors})
+        try:
+            self.lib.write_json(log_file, rec[-5000:])
+        except Exception:
+            pass
+        self.refresh()
+        return n, size, errors
+
     # ---------- okunacak EPUB ----------
     def epub_path(self, rec):
         """Okuyucuya verilecek EPUB: kendisi ya da (HTML ise) önbellekteki çevirisi."""
