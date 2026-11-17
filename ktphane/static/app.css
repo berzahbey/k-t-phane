@@ -391,7 +391,7 @@ select { height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid va
 .play-fab.inline svg { width: 16px; height: 16px; }
 .listen-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.35); z-index: 2; }
 .listen-bar i { display: block; height: 100%; background: #e04a3f; }
-.shelf-row { grid-template-columns: 40px minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.1fr) auto; }
+.shelf-row { grid-template-columns: 40px minmax(0, 2.2fr) minmax(0, 1.2fr) minmax(0, 1.1fr) 250px; }
 @media (max-width: 900px) { .shelf-row { grid-template-columns: 36px minmax(0, 1fr) auto; } }
 .shelf-listen { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 6px; }
 .big-play { height: 46px; padding: 0 20px 0 14px; font-size: 15px; background: #b3261e !important; color: #fff !important; border-radius: 23px; }

@@ -283,6 +283,14 @@
     const flat = (items, level) => (items || []).forEach((t) => { toc.push({ label: (t.label || "").trim(), href: t.href, level }); flat(t.subitems, level + 1); });
     flat(nav?.toc, 1);
     let target = start?.cfi || start?.href;
+    // Stüdyo kitapları ilk kez açılınca kapak/künye atlanır, metnin başından başlar
+    const COVER_RE = /(^|\/)(kapak|cover|kunye|künye|nav|toc|title)[^/]*\.x?html?$/i;
+    if (target && INFO.edition && (start.percent || 0) < 0.005 && COVER_RE.test(start.href || "")) target = null;  // kapakta kalmış kayıt
+    if (!target && INFO.edition) {
+      const items = book.spine?.spineItems || [];
+      const first = items.find((it) => !COVER_RE.test(it.href || ""));
+      if (first && first !== items[0]) target = first.href;
+    }
     try { await createRendition(target); } catch { await createRendition(); }
     // konum yüzdeleri: önbellekten veya hesaplayarak
     const lkey = "loc." + INFO.ckey;

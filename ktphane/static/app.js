@@ -522,6 +522,7 @@
       b.added && ["Hazırlandı", new Date(b.added * 1000).toLocaleDateString("tr")],
     ].filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
     const dl = [...b.versions.map((v) => `<a class="btn sm" href="/download/${v.id}">↓ EPUB · ${esc(v.label)}</a>`),
+      ...b.versions.filter((v) => v.pdf).map((v) => `<a class="btn sm" href="/download/${v.pdf}">↓ PDF · ${esc(v.label)}</a>`),
       ...b.audio.map((a, i) => `<a class="btn sm" href="/download/${a.id}">↓ ${b.audio.length > 1 ? `Ses ${i + 1}` : "Ses"} · ${fmtSize(a.size)}</a>`)].join("");
     $("#detailBody").innerHTML = `<div class="d-wrap">${shelfCover(b, true)}<div class="d-info">
       <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>

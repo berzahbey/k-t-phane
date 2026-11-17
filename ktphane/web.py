@@ -327,7 +327,14 @@ def create_app():
     def _rec(fid):
         if is_shelf_id(fid):
             rec = _shelf_rec(fid)
-            return {**rec, "ext": rec["ext"]}, rec["path"]
+            if rec["ext"] == "html":   # EPUB'u olmayan sürüm: HTML'den çevrilmiş EPUB verilir
+                try:
+                    path = lib.shelf.epub_path(rec)
+                except Exception as e:
+                    log.warning("EPUB'a çevrilemedi %s: %s", rec["path"], e)
+                    abort(500)
+                return {**rec, "ext": "epub", "name": os.path.splitext(rec["name"])[0] + ".epub"}, path
+            return rec, rec["path"]
         rec = lib.get_file(fid)
         if not rec:
             abort(404)
@@ -374,7 +381,7 @@ def create_app():
     def reader(fid):
         if is_shelf_id(fid):
             rec = _shelf_rec(fid)
-            if rec["ext"] != "epub":
+            if rec["ext"] not in ("epub", "html"):
                 abort(404)
             b = lib.shelf.book_of_file(fid) or {}
             lang = rec.get("lang") or ""
