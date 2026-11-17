@@ -444,7 +444,7 @@
     const terms = fold(state.q).split(/\s+/).filter(Boolean);
     let list = state.shelf.books.filter((b) => (!terms.length || terms.every((t) => b._s.includes(t))) &&
       (!state.shelfCat || (state.shelfCat === "Stüdyo" ? !catLine(b) : b.category === state.shelfCat)) &&
-      (!state.shelfOld || !b.versions.length) && (!state.shelfDup || b.dup_count > 1));
+      (!state.shelfOld || !b.versions.length) && (!state.shelfDup || b.dup_count > 1) && (!state.shelfNoAudio || !b.audio.length));
     const s = state.sort;
     if (s === "author") list.sort((a, b) => cmp(a.author || "￿", b.author || "￿") || cmp(a.title, b.title));
     else if (s === "added") list.sort((a, b) => b.added - a.added);
@@ -466,7 +466,11 @@
     const dupOld = sh.books.filter((b) => b.dup_of);
     const dupHtml = (dupOld.length ? `<button class="chip warn-chip ${state.shelfDup ? "on" : ""}" data-shelfdup="1" title="Aynı kitap birden fazla kez işlenmiş">Çift kayıtlar<span class="n">${dupOld.length}</span></button>` : "") +
       (state.shelfDup && dupOld.length ? `<button class="btn sm danger-solid" data-dupdel="${dupOld.map((b) => b.id).join(",")}">Eskilerini sil, en yenisi kalsın (${dupOld.length})</button>` : "");
-    $("#activeChips").innerHTML = dupHtml + (oldN ? `<button class="chip warn-chip ${state.shelfOld ? "on" : ""}" data-shelfold="1" title="Okunacak dosyası olmayan (eski) kitaplar">Dosyası yok<span class="n">${oldN}</span></button>` : "") +
+    const noAudio = sh.books.filter((b) => !b.audio.length);
+    const naList = state.shelfNoAudio ? shelfFiltered() : [];
+    const naHtml = (noAudio.length ? `<button class="chip warn-chip ${state.shelfNoAudio ? "on" : ""}" data-shelfnoaudio="1" title="Sesli kitabı olmayanlar">Sesi yok<span class="n">${noAudio.length}</span></button>` : "") +
+      (state.shelfNoAudio && naList.length ? `<button class="btn sm studio-btn" data-resend="${naList.map((b) => b.id).join(",")}"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg>Studio'ya yeniden gönder (${naList.length})</button>` : "");
+    $("#activeChips").innerHTML = naHtml + dupHtml + (oldN ? `<button class="chip warn-chip ${state.shelfOld ? "on" : ""}" data-shelfold="1" title="Okunacak dosyası olmayan (eski) kitaplar">Dosyası yok<span class="n">${oldN}</span></button>` : "") +
       (state.shelfOld && oldList.length ? `<button class="btn sm danger-solid" data-redo="${oldList.map((b) => b.id).join(",")}">Bunları sil ve yeniden işle (${oldList.length})</button>` : "") +
       (ck.length > 1 ? ck.map((k) => `<button class="chip ${state.shelfCat === k ? "on" : ""}" data-shelfcat="${esc(k)}">${esc(k === "Stüdyo" ? "Kategorisiz" : k)}<span class="n">${cats[k]}</span></button>`).join("") : "");
     const list = shelfFiltered();
@@ -497,7 +501,10 @@
   }
   document.addEventListener("click", (e) => {
     if (e.target.closest("[data-shelfold]")) { state.shelfOld = !state.shelfOld; state.shelfDup = false; render(); return; }
-    if (e.target.closest("[data-shelfdup]")) { state.shelfDup = !state.shelfDup; state.shelfOld = false; render(); return; }
+    if (e.target.closest("[data-shelfdup]")) { state.shelfDup = !state.shelfDup; state.shelfOld = state.shelfNoAudio = false; render(); return; }
+    if (e.target.closest("[data-shelfnoaudio]")) { state.shelfNoAudio = !state.shelfNoAudio; state.shelfOld = state.shelfDup = false; render(); return; }
+    const rs = e.target.closest("[data-resend]");
+    if (rs) { e.preventDefault(); resendShelf(rs.dataset.resend.split(",")); return; }
     const dd = e.target.closest("[data-dupdel]");
     if (dd) { e.preventDefault(); removeShelf(dd.dataset.dupdel.split(",")); return; }
     const r = e.target.closest("[data-redo]");
@@ -522,7 +529,7 @@
         <button class="btn primary big-play" data-play="${b.id}">${PLAY_SVG}<span>${resume ? "Kaldığın yerden dinle" : l && l.finished ? "Baştan dinle" : "Dinle"}</span></button>
         <span class="muted small">${resume ? `${b.audio.length > 1 ? `${l.part + 1}. bölüm · ` : ""}${hms(l.time)}${l.device ? " · " + esc(l.device) : ""}` : l && l.finished ? "Dinlendi ✓" : ""}</span></div>` +
       (b.audio.length > 1 ? `<div class="parts">${b.audio.map((a, i) => `<button class="part ${l && l.part === i ? "cur" : ""}" data-play="${b.id}" data-part="${i}">${PLAY_SVG}<span>${i + 1}. bölüm</span><small>${fmtSize(a.size)}</small></button>`).join("")}</div>` : "")
-      : `<p class="muted small">Bu kitabın sesli hâli henüz yok.</p>`;
+      : `<div class="org-card redo-box">Bu kitabın sesli hâli yok.${b.source_id ? `<div class="org-actions"><button class="btn sm studio-btn" data-resend="${b.id}"><svg viewBox="0 0 24 24"><path d="M5 4v16l14-8z"/></svg>Studio'ya yeniden gönder</button></div>` : `<br><small>Kitaplık'taki aslı bulunamadığı için gönderilemiyor.</small>`}</div>`;
     const eds = b.versions.map((v) => {
       const p = readPos(v.id);
       return `<a class="ed-btn" href="/read/${v.id}" target="_blank" rel="noopener"><span class="ed-tag ed-${v.short.replace("+", "-").toLowerCase()}">${esc(v.short)}</span><span class="ed-l"><b>${esc(v.label)}</b><small>${p != null ? `Kaldığın yer %${p}` : "Oku"}</small></span><svg viewBox="0 0 24 24"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2zM22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg></a>`;
@@ -583,6 +590,22 @@
   }
 
   document.addEventListener("click", (e) => { const o = e.target.closest("[data-sid-open]"); if (o) { e.preventDefault(); openShelf(o.dataset.sidOpen); } });
+  async function resendShelf(ids) {
+    const books = state.shelf.books.filter((b) => ids.includes(b.id));
+    if (!books.length) return;
+    const noSrc = books.filter((b) => !b.source_id);
+    const one = books.length === 1 ? `“${books[0].title}”` : `${books.length} kitap`;
+    const list = `<ul class="cf-list">${books.slice(0, 12).map((b) => `<li>${esc(b.title)}${b.source_id ? "" : ` <span style="color:var(--warn)">(aslı bulunamadı)</span>`}</li>`).join("")}${books.length > 12 ? `<li>… ve ${books.length - 12} kitap daha</li>` : ""}</ul>`;
+    if (!await ask({ step: "Dedplay Studio", title: `${one} Studio'ya yeniden gönderilsin mi?`, okClass: "primary",
+      body: `Kitaplık'taki asılları Studio'ya gider ve <b>baştan işlenir</b> (seslendirme dahil). Mevcut dosyalar silinmez; Studio aynı adla yenilerini yazar.${list}` +
+        (noSrc.length ? `<p class="small" style="color:var(--warn)">${noSrc.length} kitabın Kitaplık'ta aslı bulunamadı; onlar gönderilemez.</p>` : ""), ok: "Gönder" })) return;
+    try {
+      const d = await post("/api/shelf/resend", { ids: books.map((b) => b.id) });
+      applyStudio(d); $("#detail").open && $("#detail").close();
+      toast(`${d.queued} kitap Studio'ya gönderiliyor` + (d.no_source.length ? ` · ${d.no_source.length} kitabın aslı yok` : ""));
+      state.shelfNoAudio = false; render();
+    } catch (e) { toast("Olmadı: " + e.message); }
+  }
   async function removeShelf(ids) {
     const books = state.shelf.books.filter((b) => ids.includes(b.id));
     if (!books.length) return;

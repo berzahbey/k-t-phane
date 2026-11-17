@@ -215,8 +215,14 @@
 
   // ---------- çubuklar, dokunma, klavye ----------
   let immersiveTimer;
-  function setImmersive(on) { document.body.classList.toggle("immersive", on); }
-  function toggleUI() { setImmersive(!document.body.classList.contains("immersive")); }
+  // Bilgisayarda (fare ile) araç çubukları hep açık kalır; yalnız F tuşu / tam ekranla gizlenir.
+  // Telefonda/tablette okurken gizlenir, sağ alttaki "Aa" düğmesi ise hep görünür.
+  const DESKTOP = matchMedia("(hover: hover) and (pointer: fine)").matches;
+  function setImmersive(on, manual) {
+    if (on && DESKTOP && !manual) return;
+    document.body.classList.toggle("immersive", on);
+  }
+  function toggleUI() { setImmersive(!document.body.classList.contains("immersive"), true); }
   // Ekrana dokunma: kenarlar sayfa çevirir, orta çubukları gösterir/gizler
   function handleTap(x) {
     if (document.querySelector("dialog[open]") || !$("#settings").hidden || $("#drawer").classList.contains("open")) { closeAll(); return; }
@@ -263,7 +269,9 @@
     $("#btnNotes").onclick = () => openDrawer("notes");
     $("#btnSearch") && ($("#btnSearch").onclick = () => openDrawer("search"));
     $("#btnSettings").onclick = () => { const s = $("#settings"); s.hidden = !s.hidden; $("#scrim").hidden = s.hidden; $("#scrim").classList.toggle("clear", !s.hidden); if (!s.hidden) renderSettings(); };
-    $("#btnFull").onclick = () => { const el = document.documentElement; document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen ? el.requestFullscreen().catch(() => setImmersive(true)) : setImmersive(true)); };
+    $("#fabSettings").onclick = () => $("#btnSettings").click();
+    $("#fabToc").onclick = () => $("#btnToc").click();
+    $("#btnFull").onclick = () => { const el = document.documentElement; document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen ? el.requestFullscreen().catch(() => setImmersive(true, true)) : setImmersive(true, true)); };
     $("#btnBookmark").onclick = async () => {
       const cur = engine.currentBookmark && engine.currentBookmark(data.notes);
       if (cur) { await deleteNote(cur.id); toast("Yer imi kaldırıldı"); }

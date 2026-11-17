@@ -347,6 +347,21 @@ def create_app():
         return jsonify(removed_books=len(books), removed=removed, errors=errors[:20], queued=res.get("queued", 0),
                        unsupported=res.get("unsupported", 0), no_source=no_source[:50], **lib.studio.public())
 
+    @app.post("/api/shelf/resend")
+    def shelf_resend():
+        """Stüdyo kitaplarının Kitaplık'taki asıllarını Studio'ya yeniden gönderir (baştan işlenir; dosyalar silinmez,
+        Studio aynı adla yenisini yazar)."""
+        ids = set(i for i in (request.get_json(silent=True) or {}).get("ids") or [] if isinstance(i, str))
+        books = [b for b in lib.shelf.books() if b["id"] in ids]
+        by_id = {b["id"]: b for b in lib.books()}
+        groups, no_source = [], []
+        for b in books:
+            src = by_id.get(b.get("source_id"))
+            (groups.append([f["id"] for f in src["formats"]]) if src else no_source.append(b["title"]))
+        res = lib.studio.enqueue(groups, force=True) if groups else {"queued": 0}
+        return jsonify(queued=res.get("queued", 0), unsupported=res.get("unsupported", 0), no_source=no_source[:50],
+                       **lib.studio.public())
+
     @app.post("/api/shelf/remove")
     def shelf_remove():
         """Stüdyo rafından kitap(lar)ın bütün dosyalarını kalıcı siler (çift kayıtların eskileri için)."""

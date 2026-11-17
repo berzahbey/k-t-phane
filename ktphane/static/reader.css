@@ -153,3 +153,10 @@ body.pf-invert .hl { mix-blend-mode: normal; opacity: .35; }
 .scrim.clear { background: transparent; }
 #pdfwrap:not(.scroll) .pnum { display: none; }
 @media (max-width: 480px) { #btnFull, #btnSearch { display: none; } .ib { width: 38px; } }
+
+/* yüzen düğmeler: araç çubukları gizliyken de ayarlara ulaşılır */
+.fabs { position: fixed; right: 14px; bottom: calc(14px + var(--safe-bottom, 0px)); z-index: 40; display: flex; flex-direction: column; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+body.immersive .fabs { opacity: 1; pointer-events: auto; }
+.fab { width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(128,128,128,.35); background: rgba(128,128,128,.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: inherit; display: grid; place-items: center; cursor: pointer; box-shadow: 0 3px 12px rgba(0,0,0,.18); }
+.fab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.fab .aa { font-weight: 700; font-size: 16px; }
