@@ -38,6 +38,7 @@
   // ---------- Dedplay Studio ----------
   const STUDIO_EXTS = ["epub", "pdf", "docx", "txt"];
   state.studio = { sent: {}, status: {} };
+  state.shelf = { loaded: false, available: true, books: [], listen: {} };
   const studioOf = (b) => { for (const f of b.formats) { const s = state.studio.sent[f.ckey]; if (s && (s.s === "sent" || s.s === "skipped")) return s; } return null; };
   const inStudio = (b) => !!studioOf(b);
   const fmtGroup = (ext) => (ext === "epub" || ext === "pdf" ? ext.toUpperCase() : "Diğer");
@@ -57,6 +58,7 @@
       updateStatus(d.status);
       loadRecent();
       loadStudio();
+      if (!state.shelf.loaded) loadShelf();
     } catch (e) {
       showNotice("Kitap listesi alınamadı. Sunucu çalışıyor mu? (" + e.message + ")");
     }
@@ -71,7 +73,7 @@
   }
   function renderRecent() {
     const sec = $("#continue"); if (!sec) return;
-    const plain = !state.q && !state.cat && !state.sub && !state.favOnly;
+    const plain = !state.q && !state.cat && !state.sub && !state.favOnly && !state.studyoView;
     sec.hidden = !plain || !state.recent.length;
     $("#contRow").innerHTML = state.recent.map((r) => {
       const pct = Math.round((r.percent || 0) * 100);
@@ -166,6 +168,9 @@
   // ---------- çizim ----------
   function render() {
     renderSidebar();
+    for (const id of ["#btnStudio", "#btnSelect", "#btnSelectAll"]) $(id).hidden = !!state.studyoView;
+    $("#sidebar").classList.toggle("shelf-mode", !!state.studyoView);
+    if (state.studyoView) return renderShelf();
     state.filtered = collapse(sortBooks(baseFilter()));
     state.shown = 0;
     const box = $("#books");
@@ -276,8 +281,10 @@
     const mainCounts = countBy(pool, (b) => b.category), subCounts = countBy(pool, (b) => b.category + "\u0000" + b.subcategory);
     const order = [...Object.keys(state.tree), "Diğer"];
     const favN = state.books.filter((b) => b.favorite).length;
-    let html = `<button class="cat all ${!state.cat && !state.favOnly ? "active" : ""}" data-cat=""><svg viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12"/></svg>Tüm kitaplar<span class="n">${state.favOnly ? state.books.length : pool.length}</span></button>` +
-      `<button class="cat all fav-cat ${state.favOnly ? "active" : ""}" data-fav-only="1"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Favoriler<span class="n">${favN}</span></button>`;
+    const stuN = state.shelf.books.length;
+    let html = `<button class="cat all ${!state.cat && !state.favOnly && !state.studyoView ? "active" : ""}" data-cat=""><svg viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12"/></svg>Tüm kitaplar<span class="n">${state.favOnly ? state.books.length : pool.length}</span></button>` +
+      `<button class="cat all fav-cat ${state.favOnly ? "active" : ""}" data-fav-only="1"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.5 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>Favoriler<span class="n">${favN}</span></button>` +
+      `<button class="cat all stu-cat ${state.studyoView ? "active" : ""}" data-studyo="1" title="Dedplay Studio'da işlenmiş kitaplar: Türkçe, Osmanlıca ve Türkçe + Osmanlıca oku, sesli dinle"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>Stüdyo<span class="n">${stuN || ""}</span></button>`;
     for (const main of order) {
       if (!mainCounts[main]) continue;
       const subs = (state.tree[main] || ["Sınıflandırılmamış"]).filter((s) => subCounts[main + "\u0000" + s]);
@@ -384,6 +391,297 @@
     history.replaceState(null, "", "#kitap=" + b.id);
   }
 
+  // ---------- Stüdyo rafı: Studio'da işlenmiş kitaplar (oku + dinle) ----------
+  const PLAY_SVG = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+  const PAUSE_SVG = `<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>`;
+  const DEVICE = (() => {
+    const ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return "iPhone";
+    if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
+    if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android telefon" : "Android tablet";
+    if (/Macintosh/.test(ua)) return "Mac";
+    if (/Windows/.test(ua)) return "Windows";
+    return "Tarayıcı";
+  })();
+  const hms = (s) => {
+    s = Math.max(0, Math.floor(s || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0");
+  };
+  const catLine = (b) => b.category && b.category !== "Stüdyo" ? `${b.category}${b.subcategory ? " › " + b.subcategory : ""}` : "";
+
+  async function loadShelf() {
+    try {
+      const d = await (await fetch("/api/shelf", { cache: "no-store" })).json();
+      state.shelf = { loaded: true, available: d.available, has_content: d.has_content, root: d.root, listen: d.listen || {},
+        books: d.books.map((b) => ({ ...b, _s: fold([b.title, b.author, b.category, b.subcategory, b.source_title].join(" ")) })) };
+    } catch { state.shelf.loaded = true; }
+    if (state.studyoView) render(); else renderSidebar();
+    markPlaying();
+  }
+  function openShelfView() {
+    state.studyoView = true; state.favOnly = false; state.cat = state.sub = null;
+    history.replaceState(null, "", "#studyo");
+    render(); window.scrollTo({ top: 0 });
+    loadShelf();
+  }
+  function shelfCover(b, big) {
+    const h = hue(b.id), dir = isRtl(b.title) ? ' dir="rtl"' : "";
+    const img = b.cover_id ? `<img data-src="/cover/${b.cover_id}" alt="" loading="lazy" decoding="async">` : "";
+    const eds = big ? "" : `<span class="ed-tags">${b.versions.map((v) => `<span class="ed-tag ed-${v.short.replace("+", "-").toLowerCase()}" title="${esc(v.label)}">${esc(v.short)}</span>`).join("")}</span>`;
+    const l = state.shelf.listen[b.id], pct = l && b.audio.length ? Math.round((l.finished ? 1 : l.percent || 0) * 100) : 0;
+    const fab = b.audio.length && !big ? `<span class="play-fab" role="button" tabindex="0" data-play="${b.id}" title="Dinle${l && !l.finished && l.time ? " — kaldığın yerden" : ""}">${PLAY_SVG}</span>` : "";
+    return `<div class="cover">${fab}${big ? "" : ""}<div class="ph" style="background:linear-gradient(160deg,hsl(${h} 32% 38%),hsl(${(h + 30) % 360} 38% 24%))"><span class="t"${dir}>${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>${img}${eds}${pct ? `<span class="listen-bar"><i style="width:${pct}%"></i></span>` : ""}</div>`;
+  }
+  const shelfCard = (b) => `<div class="card shelf-card" role="button" tabindex="0" data-sid="${b.id}">${shelfCover(b)}<span class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</span><span class="au">${esc(b.author || "Yazar bilinmiyor")}</span>${catLine(b) ? `<span class="au cat-line">${esc(catLine(b))}</span>` : ""}</div>`;
+  const shelfRow = (b) => `<div class="row shelf-row" role="button" tabindex="0" data-sid="${b.id}">${b.audio.length ? `<span class="play-fab inline" role="button" tabindex="0" data-play="${b.id}" title="Dinle">${PLAY_SVG}</span>` : `<span></span>`}
+    <div style="min-width:0"><div class="ti"${isRtl(b.title) ? ' dir="rtl"' : ""}>${esc(b.title)}</div><div class="sub au-m">${esc(b.author)}</div></div>
+    <div class="sub col-au">${esc(b.author || "—")}</div><div class="sub col-cat">${esc(catLine(b) || "Stüdyo")}</div>
+    <div class="badges">${b.versions.map((v) => `<span class="badge lang">${esc(v.short)}</span>`).join("")}${b.audio.length ? `<span class="badge">Sesli</span>` : ""}</div></div>`;
+
+  function shelfFiltered() {
+    const terms = fold(state.q).split(/\s+/).filter(Boolean);
+    let list = state.shelf.books.filter((b) => (!terms.length || terms.every((t) => b._s.includes(t))) &&
+      (!state.shelfCat || (state.shelfCat === "Stüdyo" ? !catLine(b) : b.category === state.shelfCat)));
+    const s = state.sort;
+    if (s === "author") list.sort((a, b) => cmp(a.author || "￿", b.author || "￿") || cmp(a.title, b.title));
+    else if (s === "added") list.sort((a, b) => b.added - a.added);
+    else if (s === "category") list.sort((a, b) => cmp(catLine(a) || "￿", catLine(b) || "￿") || cmp(a.title, b.title));
+    else list.sort((a, b) => cmp(a.title, b.title));
+    return list;
+  }
+  function renderShelf() {
+    const box = $("#books"), sh = state.shelf;
+    box.className = "books " + state.view; box.innerHTML = "";
+    document.querySelectorAll(".seg button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
+    $("#sort").value = state.sort;
+    $("#resultTitle").textContent = state.q ? `Stüdyo · “${state.q}”` : state.shelfCat ? `Stüdyo › ${state.shelfCat}` : "Stüdyo";
+    $("#continue").hidden = true;
+    const cats = countBy(sh.books, (b) => b.category && catLine(b) ? b.category : "Stüdyo");
+    const ck = Object.keys(cats).sort((a, b) => (a === "Stüdyo") - (b === "Stüdyo") || cmp(a, b));
+    $("#activeChips").innerHTML = ck.length > 1 ? ck.map((k) => `<button class="chip ${state.shelfCat === k ? "on" : ""}" data-shelfcat="${esc(k)}">${esc(k === "Stüdyo" ? "Kategorisiz" : k)}<span class="n">${cats[k]}</span></button>`).join("") : "";
+    const list = shelfFiltered();
+    const audioN = sh.books.filter((b) => b.audio.length).length;
+    $("#resultCount").textContent = `${list.length.toLocaleString("tr")} kitap` + (list.length !== sh.books.length ? ` · toplam ${sh.books.length}` : "") + (audioN ? ` · ${audioN} sesli kitap` : "");
+    state.filtered = []; state.shown = 0;
+    const empty = $("#empty");
+    if (!sh.loaded) { box.innerHTML = Array.from({ length: 8 }, () => `<div class="skeleton"></div>`).join(""); box.className = "books grid"; empty.hidden = true; return; }
+    if (!list.length) {
+      empty.hidden = false;
+      empty.innerHTML = !sh.available ? `<strong>Stüdyo klasörü bağlı değil</strong>ZimaOS'ta Kitaplık uygulamasının ayarlarına (⋮ › Ayarlar) bir klasör satırı ekle:<br>
+        sunucu klasörü <code>/media/ZimaOS-HD/dedplay</code> → uygulama içi <code>/studyo</code>. Kaydedince Studio'da biten kitaplar burada görünür.`
+        : !sh.books.length ? `<strong>Henüz bitmiş kitap yok</strong>Studio'da işlenen kitaplar (EPUB ve M4B) bitince burada listelenir.<br><small class="muted">Klasör: ${esc(sh.root)}</small>`
+        : `<strong>Sonuç bulunamadı</strong>Aramayı veya kategoriyi değiştirmeyi deneyin.`;
+      return;
+    }
+    empty.hidden = true;
+    box.innerHTML = list.map(state.view === "list" ? shelfRow : shelfCard).join("");
+    hydrateImgs(box);
+    markPlaying();
+  }
+  function hydrateImgs(root) {
+    root.querySelectorAll("img[data-src]").forEach((img) => {
+      img.addEventListener("load", () => img.classList.add("ok"), { once: true });
+      img.addEventListener("error", () => img.remove(), { once: true });
+      img.src = img.dataset.src; img.removeAttribute("data-src");
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-shelfcat]"); if (!c) return;
+    state.shelfCat = state.shelfCat === c.dataset.shelfcat ? null : c.dataset.shelfcat; render();
+  });
+  $("#books").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const p = e.target.closest("[data-play]"), c = e.target.closest("[data-sid]");
+    if (p) { e.preventDefault(); p.click(); } else if (c && e.target === c) { e.preventDefault(); openShelf(c.dataset.sid); }
+  });
+
+  function readPos(fid) { const r = state.recent.find((x) => x.file_id === fid); return r ? Math.round((r.percent || 0) * 100) : null; }
+  function openShelf(id) {
+    const b = state.shelf.books.find((x) => x.id === id); if (!b) return;
+    const dir = isRtl(b.title) ? ' dir="rtl"' : "";
+    const l = state.shelf.listen[b.id];
+    const resume = l && !l.finished && (l.time > 5 || l.part);
+    const total = b.audio.reduce((t, a) => t + a.size, 0);
+    const playBtn = b.audio.length ? `<div class="shelf-listen">
+        <button class="btn primary big-play" data-play="${b.id}">${PLAY_SVG}<span>${resume ? "Kaldığın yerden dinle" : l && l.finished ? "Baştan dinle" : "Dinle"}</span></button>
+        <span class="muted small">${resume ? `${b.audio.length > 1 ? `${l.part + 1}. bölüm · ` : ""}${hms(l.time)}${l.device ? " · " + esc(l.device) : ""}` : l && l.finished ? "Dinlendi ✓" : ""}</span></div>` +
+      (b.audio.length > 1 ? `<div class="parts">${b.audio.map((a, i) => `<button class="part ${l && l.part === i ? "cur" : ""}" data-play="${b.id}" data-part="${i}">${PLAY_SVG}<span>${i + 1}. bölüm</span><small>${fmtSize(a.size)}</small></button>`).join("")}</div>` : "")
+      : `<p class="muted small">Bu kitabın sesli hâli henüz yok.</p>`;
+    const eds = b.versions.map((v) => {
+      const p = readPos(v.id);
+      return `<a class="ed-btn" href="/read/${v.id}" target="_blank" rel="noopener"><span class="ed-tag ed-${v.short.replace("+", "-").toLowerCase()}">${esc(v.short)}</span><span class="ed-l"><b>${esc(v.label)}</b><small>${p != null ? `Kaldığın yer %${p}` : "Oku"}</small></span><svg viewBox="0 0 24 24"><path d="M2 5h7a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H2zM22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z"/></svg></a>`;
+    }).join("");
+    const src = b.source_id ? `<button class="linkish" data-open-book="${b.source_id}">${esc(b.source_title || "Kitabı aç")}</button>` : "";
+    const meta = [
+      ["Kategori", catLine(b) ? `<span class="studio-tag inline">Stüdyo</span> ${esc(catLine(b))}` : `<span class="studio-tag inline">Stüdyo</span> <span class="muted">Kitaplık'taki aslı bulunamadı</span>`],
+      b.language && ["Asıl dili", esc(b.language)],
+      src && ["Kitaplık'taki aslı", src],
+      ["Sürümler", esc(b.versions.map((v) => v.label).join(" · ") || "—")],
+      b.audio.length && ["Sesli kitap", `${b.audio.length > 1 ? b.audio.length + " bölüm · " : ""}${fmtSize(total)}`],
+      b.added && ["Hazırlandı", new Date(b.added * 1000).toLocaleDateString("tr")],
+    ].filter(Boolean).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    const dl = [...b.versions.map((v) => `<a class="btn sm" href="/download/${v.id}">↓ EPUB · ${esc(v.label)}</a>`),
+      ...b.audio.map((a, i) => `<a class="btn sm" href="/download/${a.id}">↓ ${b.audio.length > 1 ? `Ses ${i + 1}` : "Ses"} · ${fmtSize(a.size)}</a>`)].join("");
+    $("#detailBody").innerHTML = `<div class="d-wrap">${shelfCover(b, true)}<div class="d-info">
+      <h2${dir}>${esc(b.title)}</h2><div class="by">${esc(b.author || "Yazar bilinmiyor")}</div>
+      ${playBtn}
+      ${b.versions.length ? `<h3 class="d-h">Oku</h3><div class="ed-grid">${eds}</div>` : ""}
+      <dl class="d-meta">${meta}</dl>
+      <details class="dl-box"><summary>İndir</summary><div class="dl-row">${dl}</div></details></div></div>`;
+    hydrateImgs($("#detailBody"));
+    markPlaying();
+    const dlg = $("#detail"); if (!dlg.open) dlg.showModal();
+    history.replaceState(null, "", "#studyo=" + b.id);
+  }
+  document.addEventListener("click", (e) => {
+    const o = e.target.closest("[data-open-book]"); if (!o) return;
+    state.studyoView = false; render(); openDetail(o.dataset.openBook);
+  });
+
+  // ---------- oynatıcı ----------
+  const P = { audio: new Audio(), book: null, part: 0, lastSave: 0, pendingSeek: null };
+  P.audio.preload = "metadata";
+  P.audio.setAttribute("playsinline", ""); P.audio.setAttribute("x-webkit-airplay", "allow");
+  P.audio.hidden = true; document.body.appendChild(P.audio);
+  P.rate = parseFloat(store.get("rate", "1")) || 1;
+  async function playBook(id, part) {
+    const b = state.shelf.books.find((x) => x.id === id); if (!b || !b.audio.length) return;
+    if (P.book && P.book.id === id && (part == null || part === P.part)) { P.audio.paused ? P.audio.play().catch(() => {}) : P.audio.pause(); return; }
+    if (P.book) saveListen();
+    let pos = state.shelf.listen[id];
+    try { pos = await (await fetch("/api/listen/" + id, { cache: "no-store" })).json(); state.shelf.listen[id] = pos; } catch {}
+    let t = 0, p = 0;
+    if (part != null) { p = part; t = pos && pos.part === part && !pos.finished ? pos.time || 0 : 0; }
+    else if (pos && !pos.finished) { p = Math.min(pos.part || 0, b.audio.length - 1); t = pos.time || 0; }
+    loadPart(b, p, t, true);
+  }
+  function loadPart(b, p, t, autoplay) {
+    P.book = b; P.part = p; P.pendingSeek = t > 3 ? t - 2 : null;
+    P.audio.src = "/file/" + b.audio[p].id;
+    P.audio.playbackRate = P.rate;
+    $("#player").hidden = false; document.body.classList.add("playing");
+    $("#plTitle").textContent = b.title;
+    $("#plSub").textContent = (b.author ? b.author + " · " : "") + (b.audio.length > 1 ? `${p + 1}. bölüm / ${b.audio.length}` : "Sesli kitap");
+    $("#plCover").innerHTML = b.cover_id ? `<img src="/cover/${b.cover_id}" alt="" onerror="this.remove()">` : "";
+    $("#plCover").style.background = `linear-gradient(160deg,hsl(${hue(b.id)} 32% 38%),hsl(${(hue(b.id) + 30) % 360} 38% 24%))`;
+    $("#plRate").textContent = rateTxt(P.rate);
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: b.title, artist: b.author || "", album: b.audio.length > 1 ? `${p + 1}. bölüm` : "Dedplay Stüdyo",
+          artwork: b.cover_id ? [{ src: location.origin + "/cover/" + b.cover_id, sizes: "360x540", type: "image/jpeg" }] : [] });
+      } catch {}
+    }
+    if (autoplay) P.audio.play().catch(() => {});
+    markPlaying();
+  }
+  P.audio.addEventListener("loadedmetadata", () => {
+    if (P.pendingSeek != null && P.pendingSeek < P.audio.duration) P.audio.currentTime = P.pendingSeek;
+    P.pendingSeek = null; setRate(P.rate); plUpdate();
+  });
+  function plUpdate() {
+    const a = P.audio, d = a.duration || 0;
+    $("#plCur").textContent = hms(a.currentTime);
+    $("#plDur").textContent = d ? "-" + hms(d - a.currentTime) : "";
+    if (!P.seeking) $("#plSeek").value = d ? Math.round((1000 * a.currentTime) / d) : 0;
+    $("#plPlay").innerHTML = a.paused ? PLAY_SVG : PAUSE_SVG;
+    $("#plPlay").title = a.paused ? "Oynat" : "Duraklat";
+  }
+  function listenPayload(finished) {
+    const a = P.audio, n = P.book.audio.length, d = a.duration || 0;
+    return { part: P.part, time: finished ? 0 : a.currentTime || 0, duration: d, rate: P.rate, device: DEVICE, finished: !!finished,
+      percent: finished ? 1 : (P.part + (d ? a.currentTime / d : 0)) / n };
+  }
+  function saveListen(finished, beacon) {
+    if (!P.book) return;
+    const body = listenPayload(finished), id = P.book.id;
+    if (!finished && body.time < 2 && !body.part) return;
+    P.lastSave = Date.now();
+    state.shelf.listen[id] = { ...body, updated: Date.now() };
+    const json = JSON.stringify(body);
+    if (beacon && navigator.sendBeacon) navigator.sendBeacon("/api/listen/" + id, new Blob([json], { type: "application/json" }));
+    else fetch("/api/listen/" + id, { method: "POST", headers: { "Content-Type": "application/json" }, body: json, keepalive: true }).catch(() => {});
+  }
+  P.audio.addEventListener("timeupdate", () => { plUpdate(); if (!P.audio.paused && Date.now() - P.lastSave > 15000) saveListen(); });
+  P.audio.addEventListener("play", () => { plUpdate(); markPlaying(); });
+  P.audio.addEventListener("pause", () => { plUpdate(); markPlaying(); if (!P.audio.ended) saveListen(); });
+  P.audio.addEventListener("ended", () => {
+    if (P.part + 1 < P.book.audio.length) { loadPart(P.book, P.part + 1, 0, true); saveListen(); }
+    else { saveListen(true); plUpdate(); toast("Kitap bitti ✓"); }
+  });
+  P.audio.addEventListener("error", () => { if (P.book) toast("Ses dosyası açılamadı"); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && P.book && !P.audio.paused) saveListen(false, true); });
+  window.addEventListener("pagehide", () => { if (P.book) saveListen(false, true); });
+  const skip = (s) => { const a = P.audio; a.currentTime = Math.max(0, Math.min((a.duration || 0) - 0.5, a.currentTime + s)); };
+  $("#plPlay").addEventListener("click", () => (P.audio.paused ? P.audio.play().catch(() => {}) : P.audio.pause()));
+  $("#plBack").addEventListener("click", () => skip(-15));
+  $("#plFwd").addEventListener("click", () => skip(30));
+  // Okuma hızı: hazır hızlar + 0,05'lik ince ayar (ses tonu korunur). Bütün kitaplar için hatırlanır.
+  const rateTxt = (r) => (Math.round(r * 100) / 100).toString().replace(".", ",") + "×";
+  function setRate(r) {
+    P.rate = Math.max(0.5, Math.min(3, Math.round(r * 100) / 100));
+    const a = P.audio; a.playbackRate = P.rate;
+    try { a.preservesPitch = true; a.webkitPreservesPitch = true; } catch {}
+    store.set("rate", P.rate);
+    $("#plRate").textContent = rateTxt(P.rate); $("#rateVal").textContent = rateTxt(P.rate);
+    $("#rateMenu").querySelectorAll("[data-rate]").forEach((b) => b.classList.toggle("on", +b.dataset.rate === P.rate));
+  }
+  $("#plRate").addEventListener("click", (e) => { e.stopPropagation(); $("#rateMenu").hidden = !$("#rateMenu").hidden; setRate(P.rate); });
+  $("#rateMenu").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const b = e.target.closest("[data-rate],[data-step]"); if (!b) return;
+    setRate(b.dataset.rate ? +b.dataset.rate : P.rate + +b.dataset.step);
+  });
+  document.addEventListener("click", (e) => { if (!e.target.closest("#rateMenu")) $("#rateMenu").hidden = true; });
+  $("#plSeek").addEventListener("input", (e) => { P.seeking = true; const d = P.audio.duration || 0; $("#plCur").textContent = hms((d * e.target.value) / 1000); });
+  $("#plSeek").addEventListener("change", (e) => { P.seeking = false; const d = P.audio.duration || 0; if (d) P.audio.currentTime = (d * e.target.value) / 1000; saveListen(); });
+  $("#plClose").addEventListener("click", () => {
+    if (P.book) saveListen();
+    P.audio.pause(); P.audio.removeAttribute("src"); P.audio.load(); P.book = null;
+    $("#player").hidden = true; document.body.classList.remove("playing"); markPlaying();
+  });
+  $("#plInfo").addEventListener("click", () => { if (P.book) { if (!state.studyoView) openShelfView(); openShelf(P.book.id); } });
+  // iPhone: ekran kilitliyken de çalar (sayfadaki <audio> öğesi); kilit ekranı ve kulaklık tuşları Media Session ile.
+  // Kulaklıkta tek dokunuş = oynat/duraklat; çift dokunuş (sonraki) = 30 sn ileri ya da sonraki bölüm; üçlü (önceki) = 15 sn geri.
+  function msPosition() {
+    if (!("mediaSession" in navigator)) return;
+    const a = P.audio, ms = navigator.mediaSession;
+    try { ms.playbackState = P.book ? (a.paused ? "paused" : "playing") : "none"; } catch {}
+    try { if (a.duration && isFinite(a.duration)) ms.setPositionState({ duration: a.duration, playbackRate: a.playbackRate || 1, position: Math.min(a.currentTime, a.duration) }); } catch {}
+  }
+  if ("mediaSession" in navigator) {
+    const ms = navigator.mediaSession, h = (k, f) => { try { ms.setActionHandler(k, f); } catch {} };
+    h("play", () => { P.audio.play().catch(() => {}); });
+    h("pause", () => P.audio.pause());
+    h("stop", () => P.audio.pause());
+    h("seekbackward", (d) => skip(-((d && d.seekOffset) || 15)));
+    h("seekforward", (d) => skip((d && d.seekOffset) || 30));
+    h("previoustrack", () => {
+      if (P.book && P.part > 0 && P.audio.currentTime < 5) loadPart(P.book, P.part - 1, 0, true); else skip(-15);
+    });
+    h("nexttrack", () => {
+      const a = P.audio;
+      if (P.book && P.part + 1 < P.book.audio.length && a.duration && a.duration - a.currentTime < 30) loadPart(P.book, P.part + 1, 0, true); else skip(30);
+    });
+    h("seekto", (d) => { if (d.seekTime != null) { P.audio.currentTime = d.seekTime; msPosition(); } });
+    for (const ev of ["play", "pause", "loadedmetadata", "ratechange", "seeked"]) P.audio.addEventListener(ev, msPosition);
+  }
+  function markPlaying() {
+    const cur = P.book && !P.audio.paused ? P.book.id : null;
+    document.querySelectorAll("[data-play]").forEach((el) => {
+      const on = el.dataset.play === cur && (el.dataset.part == null || +el.dataset.part === P.part);
+      el.classList.toggle("is-playing", on);
+      const svg = el.querySelector("svg"); if (svg) svg.outerHTML = on ? PAUSE_SVG : PLAY_SVG;
+      const lbl = el.classList.contains("big-play") && el.querySelector("span");
+      if (lbl) { lbl.dataset.orig = lbl.dataset.orig || lbl.textContent; lbl.textContent = on ? "Duraklat" : P.book && P.book.id === el.dataset.play ? "Devam et" : lbl.dataset.orig; }
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-play]"); if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    playBook(el.dataset.play, el.dataset.part != null ? +el.dataset.part : null);
+  });
+
   // ---------- olaylar ----------
   let qTimer;
   $("#q").addEventListener("input", (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.q = e.target.value.trim(); render(); }, 120); });
@@ -391,12 +689,16 @@
   document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => { state.view = b.dataset.view; store.set("view", state.view); render(); }));
   $("#books").addEventListener("click", (e) => {
     if (e.target.closest("[data-fav]") && !state.selecting) return;  // yıldız ayrı ele alınır
+    if (e.target.closest("[data-play]")) return;  // oynat düğmesi ayrı ele alınır
+    const sc = e.target.closest("[data-sid]"); if (sc) { openShelf(sc.dataset.sid); return; }
     const c = e.target.closest("[data-id]"); if (!c) return;
     if (state.selecting) { toggleSel(c.dataset.id, c); return; }
     openDetail(c.dataset.id);
   });
   $("#catNav").addEventListener("click", (e) => {
     const c = e.target.closest(".cat"); if (!c) return;
+    if (c.dataset.studyo) { openShelfView(); closeSidebar(); return; }
+    if (state.studyoView) { state.studyoView = false; history.replaceState(null, "", location.pathname + location.search); }
     if (c.dataset.favOnly) { state.favOnly = !state.favOnly; state.cat = state.sub = null; render(); closeSidebar(); window.scrollTo({ top: 0 }); return; }
     if (!c.dataset.cat && !c.dataset.sub) state.favOnly = false;
     const cat = c.dataset.cat || null, sub = c.dataset.sub || null;
@@ -422,7 +724,7 @@
   $("#btnFilters").addEventListener("click", openSidebar);
   $("#btnCloseFilters").addEventListener("click", closeSidebar);
   $("#scrim").addEventListener("click", closeSidebar);
-  $("#detail").addEventListener("close", () => history.replaceState(null, "", location.pathname + location.search));
+  $("#detail").addEventListener("close", () => history.replaceState(null, "", location.pathname + location.search + (state.studyoView ? "#studyo" : "")));
   $("#detail").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && document.activeElement !== $("#q") && !$("#detail").open) { e.preventDefault(); $("#q").focus(); }
@@ -968,8 +1270,11 @@
   $("#setClear").addEventListener("click", () => { if (confirm("Kayıtlı API anahtarı silinsin mi?")) saveSettings({ gemini_api_key: "" }); });
 
   setTimeout(() => loadDupes().catch(() => {}), 8000);
-  load().then(() => {
+  if (/^#studyo/.test(location.hash)) state.studyoView = true;
+  load().then(async () => {
     const m = location.hash.match(/kitap=([^&]+)/);
     if (m) openDetail(m[1]);
+    const s = location.hash.match(/studyo=([^&]+)/);
+    if (s) { await loadShelf(); openShelf(s[1]); }
   });
 })();

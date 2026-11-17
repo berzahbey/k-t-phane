@@ -64,6 +64,15 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
   kitap kopyalanmaz, Studio dosyayı yerinden okur (görmüyorsa dosya yüklenir). Gönderim arka planda sırayla
   yapılır; gönderilen kitaplarda kırmızı “Stüdyo” etiketi, Durum'da “Stüdyo'ya gönderildi / gönderilmedi”
   filtresi var. Studio adresi otomatik bulunur; gerekirse ⚙ Ayarlar'dan girilir (`STUDIO_URL` de olur).
+- **Stüdyo rafı (oku + dinle)**: Dedplay Studio'da işlenip biten kitaplar kenar çubuğundaki **Stüdyo**'da
+  listelenir. Studio'nun çıktı klasörü (`/media/ZimaOS-HD/dedplay`) salt okunur `/studyo` olarak bağlanır;
+  `EPUB/<Dil>/<Ad>.epub` ve `M4B/<Ad>.m4b` (yoksa `MP3/<Ad>/`) aynı adla tek kitapta toplanır. Kartın üzerindeki
+  kırmızı ▶ ile doğrudan dinlenir; kitaba tıklayınca **Türkçe / Osmanlıca / Türkçe + Osmanlıca** sürümlerinden
+  istenen okunur. Kategori kitabın Kitaplık'taki aslından gelir (Studio kaydı, başlık + yazar ya da başlıkla eşleşir).
+  Oynatıcı: 15 sn geri / 30 sn ileri, okuma hızı (0,5×–3×, 0,05 adımlı, ses tonu korunur), çok parçalı kitapta
+  sonraki bölüme geçiş; dinleme konumu sunucuda (`/data/dinleme.json`) tutulur, her cihazdan kaldığın yerden devam
+  edilir. iPhone'da ekran kilitliyken de çalar; kilit ekranından ve kulaklıktan (tek dokunuş oynat/duraklat, çift
+  dokunuş 30 sn ileri, üçlü dokunuş 15 sn geri) yönetilir. Raf yalnız okunur: düzenleme, kopya, silme bu kitaplara dokunmaz.
 - macOS `._` dosyaları, Synology `@eaDir`, çöp kutusu klasörleri yok sayılır.
 
 ## Kurulum (ZimaOS)
@@ -72,6 +81,9 @@ dosyalarınızı tarar, kategorilere ayırır; arama, filtreleme ve tarayıcıda
 2. Bu repodaki `docker-compose.yml` içeriğini yapıştırın. Kitap klasörünüz `/media/ZimaOS-HD/Kitap`
    değilse yalnızca o satırı değiştirin.
 3. **Install**. Arayüz: `http://SUNUCU-IP:5090`
+
+Stüdyo rafı için (2.14+): uygulama ayarlarında bir klasör satırı ekleyin: sunucu `/media/ZimaOS-HD/dedplay` →
+uygulama içi `/studyo` (Studio'nun çıktı klasörü farklıysa onu yazın).
 
 ## Gemini anahtarı
 
@@ -92,6 +104,7 @@ Uygulamada sağ üstteki **⚙ Ayarlar** düğmesinden girilir (`/data/settings.
 | `OCR_LANGS` | `tur+ara+eng` | Taranmış PDF'ler için OCR dilleri |
 | `BOOK_DIR` | `/books` | Container içindeki kitap klasörü |
 | `DATA_DIR` | `/data` | Önbellek ve kapak resimleri |
+| `STUDYO_DIR` | `/studyo` | Dedplay Studio çıktı klasörü (Stüdyo rafı) |
 
 ## Image
 

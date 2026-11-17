@@ -23,6 +23,7 @@ services:
     volumes:
       - /media/ZimaOS-HD/Kitap:/books               # "Düzenle" özelliği kitapları taşıyabilsin diye yazılabilir
       - /DATA/AppData/k-tphane/data:/data           # önbellek ve kapak resimleri (otomatik oluşur)
+      - /media/ZimaOS-HD/dedplay:/studyo:ro         # Dedplay Studio'nun çıktı klasörü: "Stüdyo" rafı (oku + dinle)
     x-casaos:
       envs:
         - container: SCAN_INTERVAL
@@ -45,6 +46,9 @@ services:
         - container: /data
           description:
             en_us: Cache and covers
+        - container: /studyo
+          description:
+            en_us: "Dedplay Studio output folder (EPUB/, M4B/, MP3/) — read-only, shown as the Stüdyo shelf"
 
 x-casaos:
   architectures:

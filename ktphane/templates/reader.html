@@ -14,9 +14,9 @@
 </head>
 <body class="{{ 'rtl-book' if info.rtl else '' }}">
 <header class="bar topbar">
-  <a class="ib" href="/" title="Kitaplığa dön"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
+  <a class="ib" href="{{ info.back or '/' }}" title="Kitaplığa dön"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></a>
   <button class="ib" id="btnToc" title="İçindekiler"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
-  <div class="tb-title"><div class="t" dir="auto">{{ info.title }}</div><div class="s" dir="auto" id="subTitle">{{ info.author }}</div></div>
+  <div class="tb-title"><div class="t" dir="auto">{{ info.title }}</div><div class="s" dir="auto" id="subTitle">{{ info.author }}{% if info.edition %}{{ " · " if info.author }}{{ info.edition }}{% endif %}</div></div>
   <button class="ib" id="btnSearch" title="Kitapta ara"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
   <button class="ib" id="btnNotes" title="Notlar ve vurgular"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-4-3H5z"/><path d="M9 9h6M9 12h4"/></svg></button>
   <button class="ib" id="btnBookmark" title="Yer imi"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-5-6 5z"/></svg></button>

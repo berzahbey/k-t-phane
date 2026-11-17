@@ -46,6 +46,8 @@ def create_app():
     lib.reading = Reading(lib)
     from .studio import Studio
     lib.studio = Studio(lib)
+    from .shelf import Shelf, is_shelf_id
+    lib.shelf = Shelf(lib)
     lib.start_background()
     lib.enricher.start()
     app.extensions["library"] = lib
@@ -295,7 +297,37 @@ def create_app():
         lib.favorites.set(ckeys, bool(d.get("on")))
         return jsonify(ok=True, count=len(lib.favorites.keys))
 
+    # ---------- Stüdyo rafı (Studio'da işlenmiş kitaplar: oku + dinle) ----------
+    @app.get("/api/shelf")
+    def shelf_list():
+        sh = lib.shelf
+        if request.args.get("refresh") == "1":
+            sh.refresh()
+        return jsonify(available=sh.available(), has_content=sh.available() and sh.has_content(),
+                       root=sh.root, books=sh.books(), listen=sh.all_listen())
+
+    @app.get("/api/listen/<bid>")
+    def listen_get(bid):
+        return jsonify(lib.shelf.get_listen(bid))
+
+    @app.route("/api/listen/<bid>", methods=["PUT", "POST"])
+    def listen_put(bid):
+        if not is_shelf_id(bid):
+            abort(404)
+        return jsonify(lib.shelf.set_listen(bid, request.get_json(silent=True, force=True) or {}))
+
+    def _shelf_rec(fid):
+        rec = lib.shelf.get_file(fid)
+        if not rec or not os.path.isfile(rec["path"]):
+            abort(404)
+        return rec
+
+    SHELF_MIME = {"epub": "application/epub+zip", "m4b": "audio/mp4", "mp3": "audio/mpeg"}
+
     def _rec(fid):
+        if is_shelf_id(fid):
+            rec = _shelf_rec(fid)
+            return {**rec, "ext": rec["ext"]}, rec["path"]
         rec = lib.get_file(fid)
         if not rec:
             abort(404)
@@ -307,7 +339,7 @@ def create_app():
     @app.get("/file/<fid>")
     def file_inline(fid):
         rec, path = _rec(fid)
-        mime = MIME.get(rec["ext"]) or mimetypes.guess_type(rec["name"])[0] or "application/octet-stream"
+        mime = MIME.get(rec["ext"]) or SHELF_MIME.get(rec["ext"]) or mimetypes.guess_type(rec["name"])[0] or "application/octet-stream"
         return send_file(path, mimetype=mime, conditional=True, download_name=rec["name"],
                          as_attachment=False, max_age=3600)
 
@@ -318,6 +350,9 @@ def create_app():
 
     @app.get("/cover/<fid>")
     def cover(fid):
+        if is_shelf_id(fid):
+            p = lib.shelf.cover_path(fid)
+            return send_file(p, mimetype="image/jpeg", max_age=86400 * 7) if p else Response(status=204)
         if not lib.get_file(fid):
             abort(404)
         p = lib.cover_path(fid)
@@ -337,6 +372,19 @@ def create_app():
 
     @app.get("/read/<fid>")
     def reader(fid):
+        if is_shelf_id(fid):
+            rec = _shelf_rec(fid)
+            if rec["ext"] != "epub":
+                abort(404)
+            b = lib.shelf.book_of_file(fid) or {}
+            lang = rec.get("lang") or ""
+            from .shelf import LANG_LABEL
+            info = {"id": fid, "ckey": fid, "ext": "epub", "name": rec["name"],
+                    "title": b.get("title") or rec["name"], "author": b.get("author") or "",
+                    "lang": lang, "edition": LANG_LABEL.get(lang, lang), "rtl": lang in ("Osmanlıca", "Arapça"),
+                    "scanned": False, "mode": "", "back": "/#studyo",
+                    "file": f"/file/{fid}", "download": f"/download/{fid}"}
+            return render_template("reader.html", info=info, version=__version__)
         rec, _ = _rec(fid)
         book, fmt = _book_of(fid)
         lang = (book or {}).get("language") or ""
@@ -356,6 +404,9 @@ def create_app():
                          conditional=True, download_name=rec["name"])
 
     def _ckey_of(fid):
+        if is_shelf_id(fid):
+            _shelf_rec(fid)
+            return fid
         rec = lib.get_file(fid)
         if not rec:
             abort(404)
@@ -425,6 +476,12 @@ def create_app():
         for b in lib.books():
             for f in b["formats"]:
                 by_ckey[f["ckey"]] = (b, f)
+        from .shelf import LANG_LABEL
+        for sb in lib.shelf.books():
+            for v in sb["versions"]:
+                by_ckey[v["id"]] = ({"id": sb["id"], "title": f"{sb['title']} · {LANG_LABEL.get(v['lang'], v['lang'])}",
+                                     "author": sb["author"], "cover_id": sb["cover_id"], "language": v["lang"]},
+                                    {"id": v["id"], "ext": "epub"})
         out = []
         for r in lib.reading.recent(24):
             hit = by_ckey.get(r["ckey"])

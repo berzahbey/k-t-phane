@@ -190,6 +190,31 @@ Kontrol Edilecek/   ← bozuk/açılamayan dosyalar</pre>
   <button class="icon-btn sm" id="studioClose" aria-label="Kapat" hidden><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
 </div>
 
+<div id="player" class="player" hidden>
+  <button class="pl-info" id="plInfo" title="Kitabın sayfasını aç"><span class="pl-cover" id="plCover"></span>
+    <span class="pl-text"><span class="pl-t" id="plTitle"></span><span class="pl-s" id="plSub"></span></span></button>
+  <div class="pl-mid">
+    <div class="pl-ctrl">
+      <button class="icon-btn" id="plBack" title="15 sn geri"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" stroke="none" fill="currentColor">15</text></svg></button>
+      <button class="pl-play" id="plPlay" title="Oynat"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="icon-btn" id="plFwd" title="30 sn ileri"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" stroke="none" fill="currentColor">30</text></svg></button>
+    </div>
+    <div class="pl-seek"><span id="plCur">0:00</span><input type="range" id="plSeek" min="0" max="1000" value="0" aria-label="Konum"><span id="plDur"></span></div>
+  </div>
+  <div class="pl-right">
+    <button class="btn sm pl-rate" id="plRate" title="Okuma hızı">1×</button>
+    <button class="icon-btn" id="plClose" title="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <div class="rate-menu" id="rateMenu" hidden>
+    <div class="rate-head">Okuma hızı</div>
+    <div class="rate-fine"><button class="btn sm" data-step="-0.05">−</button><b id="rateVal">1×</b><button class="btn sm" data-step="0.05">+</button></div>
+    <div class="rate-presets">
+      <button data-rate="0.75">0,75×</button><button data-rate="0.9">0,9×</button><button data-rate="1">1×</button><button data-rate="1.1">1,1×</button>
+      <button data-rate="1.25">1,25×</button><button data-rate="1.5">1,5×</button><button data-rate="1.75">1,75×</button><button data-rate="2">2×</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 <script src="{{ url_for('static', filename='app.js') }}?v={{ version }}"></script>
 </body>
